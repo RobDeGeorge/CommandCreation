@@ -547,7 +547,7 @@ void DeckStore::reloadActive()
     m_list = m_activeId != 0 ? m_db->getList(m_activeId) : QVariantMap();
     const QVariantList rows = m_list.isEmpty()
         ? QVariantList()
-        : m_db->listContents(m_activeId, {{m_sort, false}});
+        : m_db->listContents(m_activeId, m_sort);
     m_deck->reload(rows);
     emit activeChanged();
     emit contentsChanged();

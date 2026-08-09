@@ -333,20 +333,14 @@ void Db::ensureSetIcons()
 // Searching
 // ---------------------------------------------------------------------------
 
-QString Db::orderBy(const QList<SortLevel> &levels)
+QString Db::orderBy(const QString &sort, bool descending)
 {
+    const SortSpec spec = sortSpec(sort);
     QStringList terms;
-    bool sortsByName = false;
-    for (const SortLevel &level : levels) {
-        const SortSpec spec = sortSpec(level.key);
-        if (spec.guard)
-            terms << QLatin1String(spec.guard);
-        terms << QLatin1String(spec.expr) + (level.descending ? QStringLiteral(" DESC")
-                                                              : QString());
-        if (level.key == QLatin1String("name"))
-            sortsByName = true;
-    }
-    if (!sortsByName)
+    if (spec.guard)
+        terms << QLatin1String(spec.guard);
+    terms << QLatin1String(spec.expr) + (descending ? QStringLiteral(" DESC") : QString());
+    if (sort != QLatin1String("name"))
         terms << QStringLiteral("cards.name COLLATE NOCASE"); // stable tiebreak
     return terms.join(QStringLiteral(", "));
 }
@@ -514,14 +508,14 @@ Db::Where Db::buildWhere(const QVariantMap &f)
     return where;
 }
 
-QVariantList Db::search(const QVariantMap &filters, const QList<SortLevel> &levels,
+QVariantList Db::search(const QVariantMap &filters, const QString &sort, bool descending,
                         int limit, int offset)
 {
     Where where = buildWhere(filters);
     QString sql = QStringLiteral("SELECT %1, set_icons.icon_svg AS set_icon FROM cards"
                                  " LEFT JOIN set_icons ON cards.set_code = set_icons.code")
                       .arg(cardColumns())
-                  + where.sql + QStringLiteral(" ORDER BY ") + orderBy(levels);
+                  + where.sql + QStringLiteral(" ORDER BY ") + orderBy(sort, descending);
     if (limit >= 0) {
         sql += QStringLiteral(" LIMIT ? OFFSET ?");
         where.params << limit << offset;
@@ -841,7 +835,7 @@ int Db::removeCard(int listId, const QString &cardId)
     return 0;
 }
 
-QVariantList Db::listContents(int listId, const QList<SortLevel> &levels)
+QVariantList Db::listContents(int listId, const QString &sort, bool descending)
 {
     QSqlQuery query = exec(
         QStringLiteral("SELECT %1, set_icons.icon_svg AS set_icon, lc.qty AS qty,"
@@ -852,7 +846,7 @@ QVariantList Db::listContents(int listId, const QList<SortLevel> &levels)
                        " LEFT JOIN set_icons ON cards.set_code = set_icons.code"
                        " WHERE lc.list_id=?"
                        " ORDER BY is_commander DESC, %2")
-            .arg(cardColumns(), orderBy(levels)),
+            .arg(cardColumns(), orderBy(sort, descending)),
         {listId, listId});
     return rowsOf(query);
 }

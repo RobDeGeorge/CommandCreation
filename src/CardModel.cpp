@@ -247,7 +247,7 @@ QString CardModel::previewRarity() const
 
 QVariantList CardModel::query(int offset)
 {
-    return m_db->search(m_filters, {{m_sort, m_sortDescending}}, Page, offset);
+    return m_db->search(m_filters, m_sort, m_sortDescending, Page, offset);
 }
 
 void CardModel::refresh()

@@ -21,13 +21,6 @@
 class Db
 {
 public:
-    // Ordering runs on a list of these, highest priority first. The simple
-    // one-key sort is just a list of length one.
-    struct SortLevel {
-        QString key;
-        bool descending = false;
-    };
-
     // Opens data/cards.db with data/decks.db ATTACHed as `decks`, and brings
     // both up to the current schema. False with *error set if cards.db is
     // missing, which is the one condition that stops the app starting.
@@ -62,7 +55,8 @@ public:
     //   year_min / year_max              release year of the card's set
     //   power_min / power_max            power bounds (creatures only)
     //   toughness_min / toughness_max    toughness bounds (creatures only)
-    QVariantList search(const QVariantMap &filters, const QList<SortLevel> &levels,
+    // `sort` is one of the keys orderBy() knows; anything else sorts by name.
+    QVariantList search(const QVariantMap &filters, const QString &sort, bool descending,
                         int limit = -1, int offset = 0);
     int countMatching(const QVariantMap &filters);
     QVariantMap previewCard(const QVariantMap &filters);
@@ -91,7 +85,7 @@ public:
     QString setCardLabel(int listId, const QString &cardId, const QString &label);
     QString cardLabel(int listId, const QString &cardId);
     int removeCard(int listId, const QString &cardId);
-    QVariantList listContents(int listId, const QList<SortLevel> &levels);
+    QVariantList listContents(int listId, const QString &sort, bool descending = false);
     QList<int> cardMembership(const QString &cardId);
     QHash<QString, int> cardsInList(int listId);
 
@@ -116,7 +110,7 @@ private:
     // count can never disagree with the rows it counts. Every column it
     // touches is on `cards`, which is why a count needs no join.
     static Where buildWhere(const QVariantMap &filters);
-    static QString orderBy(const QList<SortLevel> &levels);
+    static QString orderBy(const QString &sort, bool descending);
     static QString cardColumns();
 
     QSqlQuery exec(const QString &sql, const QVariantList &params = {});
