@@ -139,12 +139,14 @@ void CardModel::setFilter(const QString &key, const QVariant &value)
     else
         m_filters.insert(key, value);
     m_debounce.start();
+    emit filtersChanged();
 }
 
 void CardModel::clearFilters()
 {
     m_filters.clear();
     m_debounce.start();
+    emit filtersChanged();
 }
 
 // -- sorting -----------------------------------------------------------------

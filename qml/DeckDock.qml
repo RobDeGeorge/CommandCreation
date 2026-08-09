@@ -27,6 +27,18 @@ Rectangle {
         W: "#f4efd2", U: "#a8cbe4", B: "#6e6663", R: "#df7d5a", G: "#7fae74"
     })
 
+    // While the gallery is held to a list, opening a different one moves it
+    // rather than leaving the grid showing the list you just navigated away
+    // from. Closing the last list lets the whole pool back.
+    Connections {
+        target: deckStore
+        function onActiveChanged() {
+            if (cardModel.listFilter !== 0)
+                cardModel.setFilter("in_list", deckStore.activeId > 0
+                                               ? deckStore.activeId : null)
+        }
+    }
+
     function pipColor(letter) {
         return identityColors[letter] || "#b8b2a8"
     }
@@ -230,6 +242,26 @@ Rectangle {
                 model: ["Cost", "Name", "Rarity"]
                 onActivated: deckStore.setSortOrder(
                     ["cmc", "name", "rarity"][currentIndex])
+            }
+
+            // Throw the open list into the gallery, so its cards can be looked
+            // at the size the grid draws them instead of one row at a time.
+            //
+            // A toggle rather than a one-way action: once the grid is holding a
+            // list, the only other way back out is Reset All in the search form,
+            // and a button that can't undo itself is a trap. `checked` is read
+            // off the model rather than kept here, so Reset All turning the
+            // filter off turns the button off with it.
+            PixelButton {
+                sprite: "mtg-icon-search"
+                pixelScale: 2
+                enabled: deckStore.activeId > 0
+                checked: deckStore.activeId > 0
+                         && cardModel.listFilter === deckStore.activeId
+                tooltip: checked ? "Show the whole pool again"
+                                 : "Show only this list's cards in the gallery"
+                onClicked: cardModel.setFilter(
+                    "in_list", checked ? null : deckStore.activeId)
             }
 
             // rename / duplicate / delete used to hang off a right-click on the

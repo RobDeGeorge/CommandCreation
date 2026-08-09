@@ -50,6 +50,9 @@ public:
     //               apart from `colors` so the two compose — this asks "could
     //               this go in the deck at all", the other is a search inside it
     //   commanders_only  only cards that can be your commander
+    //   in_list     id of a list; only cards it holds. A subquery rather than
+    //               the ids themselves, so the gallery follows the list as it
+    //               is edited instead of showing what it held when asked
     //   rarities    list of rarities to include
     //   cmc_min / cmc_max                mana value bounds
     //   year_min / year_max              release year of the card's set

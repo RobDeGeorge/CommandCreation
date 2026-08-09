@@ -406,6 +406,15 @@ Db::Where Db::buildWhere(const QVariantMap &f)
     if (has(f, "commanders_only"))
         sql += QStringLiteral(" AND can_be_commander=1");
 
+    // Asks the list what it holds rather than being handed the ids, so a card
+    // added or removed while the gallery is showing a list is reflected on the
+    // next query instead of leaving the grid a snapshot of an older list.
+    if (has(f, "in_list")) {
+        sql += QStringLiteral(" AND cards.id IN (SELECT card_id FROM decks.list_cards"
+                              " WHERE list_id=?)");
+        params << f.value(QStringLiteral("in_list")).toInt();
+    }
+
     if (has(f, "legal_identity")) {
         // The Commander rule: a card may only use colours its commander does.
         // Deliberately separate from the `colors` filter so the two compose —

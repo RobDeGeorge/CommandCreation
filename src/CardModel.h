@@ -29,6 +29,10 @@ class CardModel : public QAbstractListModel
     Q_PROPERTY(QVariantList subtypes READ subtypes CONSTANT)
     Q_PROPERTY(QVariantList years READ years CONSTANT)
     Q_PROPERTY(int count READ count NOTIFY countChanged)
+    // The list the gallery is being held to, or 0. Readable so the button that
+    // sets it can show whether it is on without keeping its own copy of the
+    // answer — clearFilters() turns this off, and the button follows.
+    Q_PROPERTY(int listFilter READ listFilter NOTIFY filtersChanged)
     Q_PROPERTY(QString previewImage READ previewImage NOTIFY previewChanged)
     Q_PROPERTY(QString previewName READ previewName NOTIFY previewChanged)
     Q_PROPERTY(QString previewFrame READ previewFrame NOTIFY previewChanged)
@@ -55,6 +59,7 @@ public:
     QVariantList subtypes();
     QVariantList years();
     int count() const { return m_total; }
+    int listFilter() const { return m_filters.value(QStringLiteral("in_list")).toInt(); }
     QString previewImage() const;
     QString previewName() const;
     QString previewFrame() const;
@@ -71,6 +76,7 @@ public:
 signals:
     void countChanged();
     void previewChanged();
+    void filtersChanged();
 
 private:
     QVariantList query(int offset);
