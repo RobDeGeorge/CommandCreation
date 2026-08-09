@@ -14,6 +14,7 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QQmlError>
 #include <QUrl>
 
 #include <cstdio>
@@ -116,11 +117,25 @@ int main(int argc, char *argv[])
     DeckStore decks(&db);
 
     QQmlApplicationEngine engine;
+
+    // Say why the UI didn't come up. Without this a stray brace in qml/ exits
+    // 1 in silence — no file, no line, nothing to distinguish a typo from a
+    // crash — while the db.open() failure above prints. Editing QML off disk
+    // (MTG_QML_DIR) is the normal way to work on this app, so a bad edit is
+    // the failure to expect, and the one worth naming.
+    QObject::connect(&engine, &QQmlApplicationEngine::warnings,
+                     [](const QList<QQmlError> &warnings) {
+                         for (const QQmlError &warning : warnings)
+                             std::fprintf(stderr, "%s\n", qPrintable(warning.toString()));
+                     });
+
     engine.rootContext()->setContextProperty(QStringLiteral("cardModel"), &model);
     engine.rootContext()->setContextProperty(QStringLiteral("deckStore"), &decks);
     engine.load(mainQml());
-    if (engine.rootObjects().isEmpty())
+    if (engine.rootObjects().isEmpty()) {
+        std::fprintf(stderr, "Couldn't load %s\n", qPrintable(mainQml().toString()));
         return 1;
+    }
 
     return app.exec();
 }

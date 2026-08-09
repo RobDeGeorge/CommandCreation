@@ -17,25 +17,31 @@ Needs CMake 3.21+, a C++17 compiler, and Qt 6.5 or newer with the `Core`, `Gui`,
 ```bash
 python3 scripts/ingest.py   # download card data from Scryfall (re-run to refresh)
 
-cmake -S . -B ~/.cache/mtgdeck-build -DCMAKE_PREFIX_PATH=/usr
-cmake --build ~/.cache/mtgdeck-build
-~/.cache/mtgdeck-build/mtgdeck
+cmake -S . -B build -DCMAKE_PREFIX_PATH=/usr   # once
+cmake --build build                            # after each C++ change (~2s)
+./build/mtgdeck
 ```
 
 Only the first line is Python, and it needs nothing but the standard library —
-there is no virtualenv to set up. After a change, `cmake --build` again and
-re-run; the configure step is only needed once.
+there is no virtualenv to set up. `cmake --build` is incremental and re-runs the
+configure step itself when `CMakeLists.txt` or the file list changes, so the
+first line is genuinely one-time.
 
-**Build outside the source tree.** The executable `mtgdeck` and the QML module
-directory `MtgDeck` differ only by case, which a case-insensitive sync client
-(Dropbox, iCloud) will treat as a conflict. Any path outside the project works;
-`~/.cache/mtgdeck-build` is just a convention.
+**`-DCMAKE_PREFIX_PATH=/usr` is not optional if you also have a Qt from the Qt
+Online Installer.** It picks the system Qt. Without it CMake may resolve to
+whichever Qt is first on `PATH` — an Android or other cross-compile kit will
+*configure without complaint* and then fail at link with `file in wrong format`,
+which is your linker being handed libraries for the wrong architecture. Worse,
+the choice is cached: adding the flag afterwards does not fix that build
+directory, you have to delete it. `-DQt6_DIR=/usr/lib/cmake/Qt6` says the same
+thing more narrowly.
 
 The QML is compiled into the binary. To edit `qml/` and see the change without
-rebuilding, point the app at the directory instead:
+rebuilding, point the app at the directory instead — restart is enough, and only
+C++ changes then need `cmake --build`:
 
 ```bash
-MTG_QML_DIR=qml ~/.cache/mtgdeck-build/mtgdeck
+MTG_QML_DIR=qml ./build/mtgdeck
 ```
 
 The ingest step is required before the first launch and takes a few minutes: it
@@ -187,9 +193,9 @@ The typeface is chosen in one place — `src/main.cpp` — and can be changed
 without editing anything:
 
 ```bash
-MTG_FONT=system ~/.cache/mtgdeck-build/mtgdeck            # the platform's own font
-MTG_FONT=/path/to/Other.ttf ~/.cache/mtgdeck-build/mtgdeck
-MTG_FONT_SIZE=16 ~/.cache/mtgdeck-build/mtgdeck           # bigger
+MTG_FONT=system ./build/mtgdeck              # the platform's own font
+MTG_FONT=/path/to/Other.ttf ./build/mtgdeck
+MTG_FONT_SIZE=16 ./build/mtgdeck             # bigger
 ```
 
 Sizes want to be multiples of 8: the face is drawn on an 8-row em, so anything

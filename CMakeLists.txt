@@ -37,7 +37,9 @@ endforeach()
 
 # The module URI must not differ from the executable name by case alone: they
 # land side by side in the build directory, and a case-insensitive filesystem or
-# sync client cannot tell "mtgdeck" from "MtgDeck".
+# sync client cannot tell "mtgdeck" from "MtgDeck". "CommandCreation" satisfies
+# that — this is why the URI is not "MtgDeck", and the reason an in-tree build/
+# is safe even inside Dropbox. Renaming either one puts that back at risk.
 qt_add_qml_module(mtgdeck
     URI CommandCreation
     VERSION 1.0
