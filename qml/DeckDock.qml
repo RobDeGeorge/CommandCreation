@@ -272,6 +272,7 @@ Rectangle {
         // turns a list into a deck (db.set_commander), so the seat appears the
         // moment there is anywhere for it to appear.
         Rectangle {
+            id: commanderSeat
             Layout.fillWidth: true
             Layout.preferredHeight: 46
             visible: deckStore.activeId > 0 && deckStore.isDeck
@@ -279,6 +280,59 @@ Rectangle {
             color: "#b9b9c1"
             border.color: deckStore.commanderId !== "" ? "#8b48d8" : "#a0a0a8"
             border.width: deckStore.commanderId !== "" ? 2 : 1
+            clip: true                // keep the wash inside the rounded corners
+
+            readonly property bool seated: deckStore.commanderId !== ""
+            readonly property var tint: dock.rowColors(deckStore.commanderIdentity)
+
+            // The same wash the rows wear, for the same reason: the commander
+            // is a card in this deck and should read as one. Only once it is
+            // seated — an empty seat has no identity to show.
+            Item {
+                anchors.fill: parent
+                visible: commanderSeat.seated
+                opacity: seatHover.hovered ? 0.72 : 0.5
+                Behavior on opacity { NumberAnimation { duration: 90 } }
+
+                Repeater {
+                    model: commanderSeat.tint.length - 1
+                    delegate: Rectangle {
+                        id: seatBand
+                        required property int index
+                        readonly property int bands: commanderSeat.tint.length - 1
+                        x: Math.round(seatBand.index * commanderSeat.width / bands)
+                        width: Math.round(
+                            (seatBand.index + 1) * commanderSeat.width / bands) - x
+                        height: commanderSeat.height
+                        gradient: Gradient {
+                            orientation: Gradient.Horizontal
+                            GradientStop {
+                                position: 0.0
+                                color: commanderSeat.tint[seatBand.index]
+                            }
+                            GradientStop {
+                                position: 1.0
+                                color: commanderSeat.tint[seatBand.index + 1]
+                            }
+                        }
+                    }
+                }
+            }
+
+            HoverHandler { id: seatHover; enabled: commanderSeat.seated }
+
+            // Opens the same enlarged view a row in the list opens. Declared
+            // before the controls in the RowLayout so the clear button, which
+            // takes the press itself, still wins where they overlap.
+            TapHandler {
+                acceptedButtons: Qt.LeftButton
+                enabled: commanderSeat.seated
+                onTapped: dock.cardActivated(deckStore.commanderId,
+                                             deckStore.commanderImage,
+                                             deckStore.commanderName,
+                                             deckStore.commanderRarity,
+                                             deckStore.commanderBack)
+            }
 
             RowLayout {
                 anchors.fill: parent
@@ -329,14 +383,17 @@ Rectangle {
                         color: deckStore.commanderName !== "" ? "#2e2e34" : "#7c7c85"
                     }
                 }
-                Row {
-                    spacing: 2
-                    Repeater {
-                        model: deckStore.commanderIdentity.split("")
-                        delegate: PixelIcon {
-                            sprite: "mtg-pip-" + modelData.toLowerCase()
-                        }
-                    }
+                // What the commander actually costs to cast, written the way
+                // the rows below write it. The colour identity that used to sit
+                // here is now the wash across the seat, the same swap the rows
+                // already make — and identity is not the cost anyway: a card
+                // with hybrid or off-colour pips says one thing here and
+                // another in the tint.
+                Label {
+                    text: deckStore.commanderMana.replace(/[{}]/g, "")
+                    visible: commanderSeat.seated
+                    font.pixelSize: Retro.body
+                    color: "#5c5c66"
                 }
                 PixelButton {
                     sprite: "mtg-icon-close"

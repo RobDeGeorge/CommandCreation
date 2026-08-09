@@ -248,6 +248,26 @@ QString DeckStore::commanderArt() const
     return str(m_list, "commander_art");
 }
 
+QString DeckStore::commanderMana() const
+{
+    return str(m_list, "commander_mana");
+}
+
+QString DeckStore::commanderRarity() const
+{
+    return str(m_list, "commander_rarity");
+}
+
+QString DeckStore::commanderImage() const
+{
+    return str(m_list, "commander_image");
+}
+
+QString DeckStore::commanderBack() const
+{
+    return str(m_list, "commander_back");
+}
+
 QString DeckStore::commanderIdentity() const
 {
     return str(m_list, "commander_identity");

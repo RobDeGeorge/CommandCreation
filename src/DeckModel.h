@@ -90,6 +90,12 @@ class DeckStore : public QObject
     Q_PROPERTY(QString commanderName READ commanderName NOTIFY activeChanged)
     Q_PROPERTY(QString commanderIdentity READ commanderIdentity NOTIFY activeChanged)
     Q_PROPERTY(QString commanderArt READ commanderArt NOTIFY activeChanged)
+    // The rest of the commander's card, for the seat: its printed cost, and
+    // what the enlarged view needs to show it the way a row in the list does.
+    Q_PROPERTY(QString commanderMana READ commanderMana NOTIFY activeChanged)
+    Q_PROPERTY(QString commanderRarity READ commanderRarity NOTIFY activeChanged)
+    Q_PROPERTY(QString commanderImage READ commanderImage NOTIFY activeChanged)
+    Q_PROPERTY(QString commanderBack READ commanderBack NOTIFY activeChanged)
     Q_PROPERTY(QVariantMap stats READ stats NOTIFY contentsChanged)
     Q_PROPERTY(QVariantList problems READ problems NOTIFY contentsChanged)
     Q_PROPERTY(QVariantList illegalCardIds READ illegalCardIds NOTIFY contentsChanged)
@@ -109,6 +115,10 @@ public:
     QString commanderName() const;
     QString commanderIdentity() const;
     QString commanderArt() const;
+    QString commanderMana() const;
+    QString commanderRarity() const;
+    QString commanderImage() const;
+    QString commanderBack() const;
 
     QVariantMap stats() const;
     QVariantList problems() const;
