@@ -47,6 +47,12 @@ private:
 class DeckModel : public QAbstractListModel
 {
     Q_OBJECT
+    // Copies per type, for the heading above each group: {"Creature": 25, ...}.
+    // Counted off the rows the view actually draws, not off stats(), which
+    // includes the commander — a deck led by a creature would otherwise claim
+    // one more creature than it lists.
+    Q_PROPERTY(QVariantMap typeCounts READ typeCounts NOTIFY typeCountsChanged)
+
 public:
     explicit DeckModel(DeckStore *store);
 
@@ -56,10 +62,15 @@ public:
 
     void reload(const QVariantList &rows);
     const QVariantList &rows() const { return m_rows; }
+    QVariantMap typeCounts() const { return m_typeCounts; }
+
+signals:
+    void typeCountsChanged();
 
 private:
     QVariantList m_rows;    // all of them
     QVariantList m_visible; // ...minus the commander
+    QVariantMap m_typeCounts;
 };
 
 // The single object QML talks to. It owns the two models — the sidebar of

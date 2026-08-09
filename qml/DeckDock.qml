@@ -356,7 +356,15 @@ Rectangle {
                 boundsBehavior: Flickable.StopAtBounds
                 ScrollBar.vertical: ScrollBar {}
 
-                // group header whenever the card type changes
+                // group header whenever the card type changes. DeckModel hands
+                // the rows over grouped, so each type gets one of these.
+                //
+                // These stay inline; the heading held at the top of the view is
+                // the separate banner below. ViewSection.CurrentLabelAtStart
+                // would do the pinning itself, but it drops the inline label of
+                // a group that begins mid-view — scrolling from Creature into
+                // Instant showed no Instant heading at all — so the pinning is
+                // done by hand instead.
                 section.property: "primaryType"
                 section.criteria: ViewSection.FullString
                 section.delegate: Rectangle {
@@ -367,6 +375,15 @@ Rectangle {
                         anchors.verticalCenter: parent.verticalCenter
                         x: 8
                         text: section
+                        font.pixelSize: Retro.body
+                        color: "#5c5c66"
+                    }
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.right: parent.right
+                        anchors.rightMargin: 8
+                        // copies in this group, counted off the same rows
+                        text: "x" + (deckStore.deck.typeCounts[section] || 0)
                         font.pixelSize: Retro.body
                         color: "#5c5c66"
                     }
@@ -577,6 +594,35 @@ Rectangle {
                         acceptedButtons: Qt.RightButton
                         onTapped: dock.deckCardMenuRequested(cardId, name, label)
                     }
+                }
+            }
+
+            // The heading of the group you are inside, held at the top of the
+            // view. Drawn over the list rather than in it, so the next group's
+            // own heading scrolls up underneath and disappears behind this one
+            // at the moment the label switches to it.
+            Rectangle {
+                anchors.left: deckView.left
+                anchors.right: deckView.right
+                anchors.top: deckView.top
+                height: 20
+                color: "#cccccf"
+                z: 2
+                visible: deckView.count > 0 && deckView.currentSection !== ""
+                Label {
+                    anchors.verticalCenter: parent.verticalCenter
+                    x: 8
+                    text: deckView.currentSection
+                    font.pixelSize: Retro.body
+                    color: "#5c5c66"
+                }
+                Label {
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.right: parent.right
+                    anchors.rightMargin: 8
+                    text: "x" + (deckStore.deck.typeCounts[deckView.currentSection] || 0)
+                    font.pixelSize: Retro.body
+                    color: "#5c5c66"
                 }
             }
         }

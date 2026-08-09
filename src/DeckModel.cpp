@@ -179,7 +179,18 @@ void DeckModel::reload(const QVariantList &rows)
                          return typeRank(a.toMap()) < typeRank(b.toMap());
                      });
 
+    // Copies, not rows: a heading over "2x Forest" reads 2. Same rows the
+    // grouping just ordered, so the number always matches what is under it.
+    m_typeCounts.clear();
+    for (const QVariant &entry : std::as_const(m_visible)) {
+        const QVariantMap card = entry.toMap();
+        const QString type = DeckRules::primaryType(card);
+        const int qty = std::max(1, card.value(QStringLiteral("qty")).toInt());
+        m_typeCounts[type] = m_typeCounts.value(type).toInt() + qty;
+    }
+
     endResetModel();
+    emit typeCountsChanged();
 }
 
 // ---------------------------------------------------------------------------
