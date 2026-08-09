@@ -1,7 +1,7 @@
 # CommandCreation
 
 A pixel-art desktop app for building Magic: The Gathering Commander decks —
-PySide6/QML front to end, backed by Scryfall's card data held locally in SQLite.
+C++/Qt Quick front to end, backed by Scryfall's card data held locally in SQLite.
 
 Search the whole Commander-legal pool, build lists and decks side by side, and
 have every deck check itself against the format as you go: 100 cards, singleton,
@@ -10,11 +10,32 @@ MTGO, TappedOut or Deckstats; export back out in three formats.
 
 ## Setup / run
 
+Needs CMake 3.21+, a C++17 compiler, and Qt 6.5 or newer with the `Core`, `Gui`,
+`Qml`, `Quick`, `Sql` and `Network` modules. On Arch that is `qt6-base` and
+`qt6-declarative`.
+
 ```bash
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
 python3 scripts/ingest.py   # download card data from Scryfall (re-run to refresh)
-python3 main.py             # launch the UI
+
+cmake -S . -B ~/.cache/mtgdeck-build -DCMAKE_PREFIX_PATH=/usr
+cmake --build ~/.cache/mtgdeck-build
+~/.cache/mtgdeck-build/mtgdeck
+```
+
+Only the first line is Python, and it needs nothing but the standard library —
+there is no virtualenv to set up. After a change, `cmake --build` again and
+re-run; the configure step is only needed once.
+
+**Build outside the source tree.** The executable `mtgdeck` and the QML module
+directory `MtgDeck` differ only by case, which a case-insensitive sync client
+(Dropbox, iCloud) will treat as a conflict. Any path outside the project works;
+`~/.cache/mtgdeck-build` is just a convention.
+
+The QML is compiled into the binary. To edit `qml/` and see the change without
+rebuilding, point the app at the directory instead:
+
+```bash
+MTG_QML_DIR=qml ~/.cache/mtgdeck-build/mtgdeck
 ```
 
 The ingest step is required before the first launch and takes a few minutes: it
@@ -128,10 +149,10 @@ satisfies all of them:
 
 ## Layout
 
-- `main.py` — app entry point, launches the QML UI
-- `app/` — Python backend (`db.py` SQLite queries, `card_model.py` search results,
-  `deck_model.py` lists/decks exposed to QML, `deck_rules.py` legality and stats,
-  `deck_io.py` reading and writing deck lists)
+- `CMakeLists.txt` — the build; also globs `qml/` and its assets into the binary
+- `src/` — C++ backend (`Db` SQLite queries, `CardModel` search results,
+  `DeckModel` lists/decks exposed to QML, `DeckRules` legality and stats,
+  `DeckIo` reading and writing deck lists, `main.cpp` entry point)
 - `qml/` — QML UI (`Main.qml` shell + filter card, `DeckDock.qml` deck workspace,
   `CardMenu.qml` right-click menu, `NameDialog.qml`)
 - `qml/Retro*.qml`, `qml/Pixel*.qml`, `qml/Retro.js` — the pixel-art look: buttons,
@@ -162,13 +183,13 @@ drew the digit `1` and the letter `l` from the same pixels one row apart, so a
 count like `31830 cards` read as `3i830`; this one gives the `1` a flag and a
 foot no letter has. It is still in `qml/assets/` and one `MTG_FONT=` away.
 
-The typeface is chosen in one place — `main.py` — and can be changed without
-editing anything:
+The typeface is chosen in one place — `src/main.cpp` — and can be changed
+without editing anything:
 
 ```bash
-MTG_FONT=system python3 main.py            # the platform's own font
-MTG_FONT=/path/to/Other.ttf python3 main.py
-MTG_FONT_SIZE=16 python3 main.py           # bigger
+MTG_FONT=system ~/.cache/mtgdeck-build/mtgdeck            # the platform's own font
+MTG_FONT=/path/to/Other.ttf ~/.cache/mtgdeck-build/mtgdeck
+MTG_FONT_SIZE=16 ~/.cache/mtgdeck-build/mtgdeck           # bigger
 ```
 
 Sizes want to be multiples of 8: the face is drawn on an 8-row em, so anything

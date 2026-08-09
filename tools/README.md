@@ -22,20 +22,31 @@ follow.
 ```bash
 node tools/mtg-buttons.js         # needs the pixel art engine (see below)
 python3 tools/build-font.py       # needs fonttools
-python3 tools/set-glyphs.py && node tools/set-glyphs.js
+python3 tools/set-glyphs.py && node tools/set-glyphs.js   # needs PySide6
 ```
+
+These two are the only Python left in the project, and neither runs at
+application start — the app itself is C++. Nothing here is installed by
+default; give each one a throwaway environment when you need it.
 
 `mtg-buttons.js` draws through the pixel art engine in `../_Pixelart`, and
 writes its sprites into that engine's `library/` as well as exporting the PNGs
 here — so any of them can be opened in the engine's editor and nudged by hand.
 Point `PIXELART_ENGINE` elsewhere if the engine moves.
 
-`build-font.py` needs `fonttools`, which is deliberately not in the
-application's `requirements.txt`; it is only needed to rebuild the font.
+`build-font.py` needs `fonttools`; it is only needed to rebuild the font.
 
 ```bash
 python3 -m venv /tmp/fontenv && /tmp/fontenv/bin/pip install fonttools
 /tmp/fontenv/bin/python3 tools/build-font.py
+```
+
+`set-glyphs.py` renders each set's SVG through `QSvgRenderer`, so it needs
+PySide6 — the one place the project still wants it:
+
+```bash
+python3 -m venv /tmp/svgenv && /tmp/svgenv/bin/pip install PySide6
+/tmp/svgenv/bin/python3 tools/set-glyphs.py
 ```
 
 ## Set symbols

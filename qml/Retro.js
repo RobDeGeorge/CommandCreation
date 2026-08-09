@@ -36,7 +36,7 @@ var inkDim     = lavender      // secondary text, hints, placeholders
 var inkHot     = yellow        // the value you set, the thing that is on
 var inkBad     = pink          // errors
 
-// type sizes. Only multiples of 8 stay on the pixel grid -- see main.py.
+// type sizes. Only multiples of 8 stay on the pixel grid -- see src/main.cpp.
 var small      = 8
 var body       = 8
 var title      = 16
