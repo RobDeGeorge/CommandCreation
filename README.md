@@ -1,0 +1,180 @@
+# CommandCreation
+
+A pixel-art desktop app for building Magic: The Gathering Commander decks —
+PySide6/QML front to end, backed by Scryfall's card data held locally in SQLite.
+
+Search the whole Commander-legal pool, build lists and decks side by side, and
+have every deck check itself against the format as you go: 100 cards, singleton,
+and colour identity against your commander. Import from Moxfield, Archidekt,
+MTGO, TappedOut or Deckstats; export back out in three formats.
+
+## Setup / run
+
+```bash
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+python3 scripts/ingest.py   # download card data from Scryfall (re-run to refresh)
+python3 main.py             # launch the UI
+```
+
+The ingest step is required before the first launch and takes a few minutes: it
+pulls Scryfall's Oracle bulk data, filters it to Commander-legal cards, and
+writes `data/cards.db` (~29 MB, ~31k cards). That file and your own
+`data/decks.db` stay out of the repo — the first is regenerated, the second is
+yours.
+
+Card art is not stored. It loads on demand from Scryfall's CDN, so the app wants
+a network connection to show card images.
+
+## Building decks
+
+Right-click any card in the grid:
+
+- **Add to list** — tick any of your lists to drop the card in, untick to pull it back out
+- **New list…** — name a list and put the card straight into it
+- **Set as commander** — on any legendary creature; this also turns the list into a deck
+
+Double-clicking a card adds it to whichever list is open. The deck panel on the
+right picks the open list from a dropdown, then gives the rest of its height to
+that list: the contents (grouped by card type, with ±  quantity steppers), the
+mana curve, colour pips, type counts, and a running rule check — 100 cards,
+singleton, and colour identity against your commander.
+
+The dropdown replaced a standing scroll box. That box only ever answered one
+question — which list is open — and spent a permanent slice of the panel doing
+it. The card count and the sort order sit on that same row, so one line carries
+everything about *which* list you are looking at and the rest of the panel is
+the list itself. Rename, duplicate and delete used to hang off a right-click on
+its rows; they now live behind the `⋯` button beside the dropdown.
+
+The commander is not repeated in the card list. It has its own slot above, and
+listing it twice makes a one-card deck look like two. It is still a card in the
+deck underneath: it counts toward the hundred, it is in the export, and the
+grid still ticks it as present.
+
+Each row carries a thumbnail of the card's own art — Scryfall's `art_crop`, not
+the whole card, because at 34×24 a whole card is a grey rectangle with a smudge
+on it. They decode at the size they're drawn rather than at the crop's native
+626×457; a hundred rows at full size is a hundred megabytes for something the
+width of a thumbnail.
+
+## Lists and decks
+
+They are the same thing with a different `kind`. A **deck** gets checked against
+the Commander rules; a **list** is just a pile of cards. You pick which when you
+name it — `+ New` asks, and that is the only place the choice is made.
+
+Setting a commander on a plain list also turns it into a deck, since a list with
+a commander is what a deck is. `DeckStore.promoteToDeck()` and `demoteToList()`
+still exist for changing kind after the fact; nothing in the UI calls them.
+
+Every row in the sidebar carries a symbol, so the gutter lines up and the
+absence of a crown is never just an absence of anything:
+
+| | |
+|---|---|
+| ruled lines | a list |
+| crown | a deck |
+| crown + colour pips | a deck with a commander, and its colour identity |
+
+The crown is the same one on the `Make deck` button and the commander seat —
+one symbol, one meaning. A deck with no commander yet shows the crown alone: it
+used to show a colourless mana pip, which read as "colourless deck" rather than
+"deck".
+
+## Staying legal
+
+A deck checks itself as you build. Cards that break a rule — outside the
+commander's colour identity, or a second copy of something that isn't a basic
+land — **pulse red** in the deck list, in a two-beat heartbeat. The rule text
+under the deck already said what was wrong; the pulse says *which row*, which a
+list of names in a sentence can't.
+
+Only decks pulse, and only errors do. "34 more cards to go" is a warning, not a
+card's fault.
+
+`Legal for commander` in the filter panel narrows the whole card pool to what
+the open deck's commander legally allows. It names which one directly under the
+toggle — colour pips, the commander, and the deck it belongs to — because with
+several decks on the go, *which* commander is the whole question the toggle
+answers. Switching decks re-scopes it; opening one with no commander clears it
+rather than leaving a stale filter applied.
+
+It composes with the colour-identity pips on the card face rather than
+replacing them: the toggle bounds what could go in the deck at all, the pips
+are a search you run inside that. A colourless commander allows only colourless
+cards, which is a real filter and not the absence of one.
+
+`Import` takes a deck list pasted from Moxfield, Archidekt, MTGO, TappedOut or
+Deckstats. Quantities, `1x` prefixes, `(SET) 123` suffixes, `[Category]` tags,
+`*F*` foil markers, `SB:` prefixes and `//` comments are all understood.
+Matching ignores case and accents, folds curly apostrophes, and lets a
+double-faced card answer to its front face alone — so `Aberrant Researcher`
+finds `Aberrant Researcher // Perfected Form`.
+
+It shows you what it found before writing anything: how many cards, which
+commander, and **which names it didn't recognise, by name**. Cards in a
+sideboard or maybeboard are reported and left out. Import as a new list, or
+merge into the one that's open.
+
+`Export…` offers three formats, because the sites disagree and nothing
+satisfies all of them:
+
+| | |
+|---|---|
+| **Moxfield / Archidekt** | `Commander` and `Deck` headings. The only one that carries which card is the commander. |
+| **Plain** | Bare `1 Card Name` lines. Anything that reads deck lists reads this, but the commander is lost. |
+| **Annotated** | Grouped under `Creatures (12)` headings — for reading, not importing. Those headings are not a format any site parses. |
+
+## Layout
+
+- `main.py` — app entry point, launches the QML UI
+- `app/` — Python backend (`db.py` SQLite queries, `card_model.py` search results,
+  `deck_model.py` lists/decks exposed to QML, `deck_rules.py` legality and stats,
+  `deck_io.py` reading and writing deck lists)
+- `qml/` — QML UI (`Main.qml` shell + filter card, `DeckDock.qml` deck workspace,
+  `CardMenu.qml` right-click menu, `NameDialog.qml`)
+- `qml/Retro*.qml`, `qml/Pixel*.qml`, `qml/Retro.js` — the pixel-art look: buttons,
+  icons, overlay chrome, and the palette and type scale they share
+- `qml/assets/` — sprite PNGs, set-symbol glyphs, the UI face `PressStart2P-Regular.ttf`
+  (SIL OFL, licence beside it) and `OasisPixel.ttf` (generated; see `tools/`)
+- `tools/` — regenerates everything in `qml/assets/`
+- `scripts/ingest.py` — downloads Scryfall Oracle bulk data, filters to Commander-legal cards, builds `data/cards.db`
+- `data/cards.db` — SQLite database (generated, ~31k cards)
+- `data/decks.db` — your lists and decks (created on first run)
+
+Your lists live in their own file on purpose: `ingest.py` deletes and rebuilds
+`cards.db` on every refresh, so nothing you author may live inside it.
+
+Card art is loaded on demand from Scryfall's CDN via URLs stored in the database.
+
+## The look
+
+Buttons, icons, mana pips and the set symbols are pixel art built through a
+separate pixel art engine, kept alongside this project as `../_Pixelart`.
+Everything lands in that engine's library, so any of it can be opened in its
+editor and redrawn by hand. The finished sprites are committed in
+`qml/assets/`, so the engine is only needed to regenerate them — the app runs
+without it. `tools/README.md` covers regenerating it.
+
+The type is Press Start 2P. The in-house face it replaced, `OasisPixel.ttf`,
+drew the digit `1` and the letter `l` from the same pixels one row apart, so a
+count like `31830 cards` read as `3i830`; this one gives the `1` a flag and a
+foot no letter has. It is still in `qml/assets/` and one `MTG_FONT=` away.
+
+The typeface is chosen in one place — `main.py` — and can be changed without
+editing anything:
+
+```bash
+MTG_FONT=system python3 main.py            # the platform's own font
+MTG_FONT=/path/to/Other.ttf python3 main.py
+MTG_FONT_SIZE=16 python3 main.py           # bigger
+```
+
+Sizes want to be multiples of 8: the face is drawn on an 8-row em, so anything
+else lands glyph rows on half pixels. It is monospaced at one em per glyph,
+which makes every label a third wider than the old face at the same size —
+hence a scale of 8 / 8 / 16 rather than 10 / 10 / 20. It also carries ASCII and
+Latin-1 only, so marks like a tick come from the icon sprites, never from a
+character. The relative scale (`small` / `body` / `title`) and the overlay
+palette live in `qml/Retro.js`.
