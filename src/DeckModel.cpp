@@ -3,6 +3,8 @@
 #include "DeckIo.h"
 #include "DeckRules.h"
 
+#include <algorithm>
+
 const QStringList ListRoles = {
     "listId", "name", "kind", "cardCount", "commanderName",
     "commanderIdentity", "commanderArt", "isActive",
@@ -36,6 +38,15 @@ const QStringList &deckRoles()
 QString str(const QVariantMap &row, const char *key)
 {
     return row.value(QLatin1String(key)).toString();
+}
+
+// Where a card's type sits in the deck view's running order. primaryType()
+// answers "Other" for anything TypeOrder doesn't name, which indexOf puts at
+// -1; that sorts last, which is where "Other" belongs.
+int typeRank(const QVariantMap &row)
+{
+    const int rank = DeckRules::TypeOrder.indexOf(DeckRules::primaryType(row));
+    return rank < 0 ? DeckRules::TypeOrder.size() : rank;
 }
 
 } // namespace
@@ -153,6 +164,21 @@ void DeckModel::reload(const QVariantList &rows)
         if (!entry.toMap().value(QStringLiteral("is_commander")).toBool())
             m_visible << entry;
     }
+
+    // The view draws a header above each run of one type, and ListView starts
+    // a new run every time section.property changes — so unless the rows
+    // arrive grouped, a deck sorted by name gives "Artifact, Sol Ring,
+    // Creature, Bear, Artifact, Mox…", a header per card. Group them here.
+    //
+    // Stable, so the order the query returned survives inside each type: that
+    // is the sort the user picked in the combo, and it stays the sort within
+    // a group. The groups themselves follow DeckRules::TypeOrder, the order
+    // the annotated export already uses.
+    std::stable_sort(m_visible.begin(), m_visible.end(),
+                     [](const QVariant &a, const QVariant &b) {
+                         return typeRank(a.toMap()) < typeRank(b.toMap());
+                     });
+
     endResetModel();
 }
 
