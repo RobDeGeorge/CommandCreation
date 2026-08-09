@@ -720,7 +720,8 @@ QVariantMap Db::getList(int listId)
 {
     QSqlQuery query = exec(QStringLiteral(
                                "SELECT l.*, c.name AS commander_name,"
-                               " c.color_identity AS commander_identity"
+                               " c.color_identity AS commander_identity,"
+                               " c.image_art_crop AS commander_art"
                                " FROM decks.lists l LEFT JOIN cards c ON c.id = l.commander_id"
                                " WHERE l.id=?"),
                            {listId});

@@ -243,6 +243,11 @@ QString DeckStore::commanderName() const
     return str(m_list, "commander_name");
 }
 
+QString DeckStore::commanderArt() const
+{
+    return str(m_list, "commander_art");
+}
+
 QString DeckStore::commanderIdentity() const
 {
     return str(m_list, "commander_identity");

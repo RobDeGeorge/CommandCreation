@@ -288,6 +288,29 @@ Rectangle {
                     sprite: "mtg-icon-commander"
                     on: deckStore.commanderId !== ""
                 }
+                // The commander's own art, seated like the rows below it. Only
+                // once one is named — an empty frame here would read as a card
+                // that failed to load rather than a seat waiting to be filled.
+                Rectangle {
+                    Layout.preferredWidth: 48
+                    Layout.preferredHeight: 34
+                    visible: deckStore.commanderArt !== ""
+                    color: "#a8a8b0"          // shows through while loading
+                    border.width: 1
+                    border.color: "#8b48d8"   // the seat's own purple, not the row grey
+
+                    Image {
+                        anchors.fill: parent
+                        anchors.margins: 1
+                        source: deckStore.commanderArt
+                        asynchronous: true
+                        // see the note on the row thumbnails
+                        sourceSize.width: Math.ceil(
+                            width * Screen.devicePixelRatio * 2)
+                        fillMode: Image.PreserveAspectCrop
+                        clip: true
+                    }
+                }
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 0
@@ -500,12 +523,24 @@ Rectangle {
                                 anchors.margins: 1
                                 source: imageArtCrop
                                 asynchronous: true
-                                // decode at the size it is drawn: a deck is a
-                                // hundred of these, and the full crop is
-                                // 626x457 apiece
-                                sourceSize: Qt.size(
-                                    width * Screen.devicePixelRatio,
-                                    height * Screen.devicePixelRatio)
+                                // Width only, and doubled. Setting both axes
+                                // makes Qt decode to *fit inside* the box, but
+                                // PreserveAspectCrop needs the decode to cover
+                                // it — the art crop is wider in proportion than
+                                // this slot, so a fitted decode came up short
+                                // across and was scaled back up to fill, which
+                                // is what made these look soft. Constraining
+                                // the width alone lets the height overhang and
+                                // be cropped, which is the point.
+                                //
+                                // 2x, then let the default smooth filtering
+                                // halve it: compared side by side at this size,
+                                // 1x is sharp but jagged, 3x and mipmapping
+                                // both go soft, and 2x plain keeps the most
+                                // detail. At 34x24 the whole deck decodes to
+                                // well under a megabyte either way.
+                                sourceSize.width: Math.ceil(
+                                    width * Screen.devicePixelRatio * 2)
                                 fillMode: Image.PreserveAspectCrop
                                 clip: true
                             }

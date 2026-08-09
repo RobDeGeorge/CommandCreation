@@ -89,6 +89,7 @@ class DeckStore : public QObject
     Q_PROPERTY(QString commanderId READ commanderId NOTIFY activeChanged)
     Q_PROPERTY(QString commanderName READ commanderName NOTIFY activeChanged)
     Q_PROPERTY(QString commanderIdentity READ commanderIdentity NOTIFY activeChanged)
+    Q_PROPERTY(QString commanderArt READ commanderArt NOTIFY activeChanged)
     Q_PROPERTY(QVariantMap stats READ stats NOTIFY contentsChanged)
     Q_PROPERTY(QVariantList problems READ problems NOTIFY contentsChanged)
     Q_PROPERTY(QVariantList illegalCardIds READ illegalCardIds NOTIFY contentsChanged)
@@ -107,6 +108,7 @@ public:
     QString commanderId() const;
     QString commanderName() const;
     QString commanderIdentity() const;
+    QString commanderArt() const;
 
     QVariantMap stats() const;
     QVariantList problems() const;
