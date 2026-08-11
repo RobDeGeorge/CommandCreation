@@ -71,3 +71,22 @@ target_compile_definitions(mtgdeck PRIVATE
 # file on first run, and ensureDeckTables() fills in the schema.
 install(TARGETS mtgdeck RUNTIME DESTINATION bin)
 install(FILES data/cards.db DESTINATION bin/data OPTIONAL)
+
+# The browser has no filesystem to install into. cards.db is packaged into
+# Emscripten's virtual one at /data instead, which is the first case dataDir()
+# answers with. Configure this build with:
+#
+#   ~/Qt/<ver>/wasm_singlethread/bin/qt-cmake -S . -B build-wasm \
+#       -DQT_HOST_PATH=~/Qt/<ver>/gcc_64
+#
+# after sourcing emsdk_env.sh. The host path is not optional and its Qt version
+# must equal the wasm kit's exactly.
+#
+# The 29 MB becomes a .data file the page downloads before the app starts, so
+# this is the single biggest thing standing between a visitor and a first
+# paint. decks.db is deliberately not preloaded: ATTACH creates it on first
+# run, and it lives only in memory until Db::flush() pushes it to IndexedDB.
+if(EMSCRIPTEN)
+    target_link_options(mtgdeck PRIVATE
+        "SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/data/cards.db@/data/cards.db")
+endif()

@@ -62,6 +62,53 @@ Qt's own libraries are not bundled by this, so the target machine still needs
 Qt 6.5+ installed. A self-contained bundle would want `qt_generate_deploy_app_script`
 (or `linuxdeployqt` / `windeployqt`) on top.
 
+## The browser build
+
+Same sources, a second build directory. Nothing forks: `qml/` is shared whole,
+and the three places the browser differs are `#ifdef Q_OS_WASM` inside `Db`.
+
+```bash
+# once — the Emscripten version is not a preference, see below
+git clone --depth 1 https://github.com/emscripten-core/emsdk.git ~/emsdk
+~/emsdk/emsdk install 3.1.50 && ~/emsdk/emsdk activate 3.1.50
+aqt install-qt all_os wasm 6.7.3 wasm_singlethread --outputdir ~/Qt
+chmod +x ~/Qt/6.7.3/wasm_singlethread/bin/{qt-cmake,qmake,qmake6,qtpaths,qtpaths6}
+
+# each build
+source ~/emsdk/emsdk_env.sh
+~/Qt/6.7.3/wasm_singlethread/bin/qt-cmake -S . -B build-wasm \
+    -DQT_HOST_PATH=$HOME/Qt/6.7.3/gcc_64
+cmake --build build-wasm
+(cd build-wasm && python3 -m http.server 8765)   # then open mtgdeck.html
+```
+
+Four things that will cost you an afternoon if you guess at them:
+
+- **The Emscripten version is pinned by Qt**, not chosen. `3.1.50` is what this
+  kit names in `QT_EMCC_RECOMMENDED_VERSION`
+  (`lib/cmake/Qt6/QtPublicWasmToolchainHelpers.cmake`, also `mkspecs/qconfig.pri`).
+  Read it out of the kit rather than trusting a blog post; it changes per Qt
+  release.
+- **`QT_HOST_PATH` must be a Qt of exactly the same version** as the wasm kit.
+  The system Qt here is 6.11.1, so it cannot serve — `~/Qt/6.7.3/gcc_64` can.
+- **`aqt` ships the wasm kit from Qt's Windows-hosted archives**, and the Unix
+  shell wrappers arrive without their exec bit. That is the `chmod` above; skip
+  it and `qt-cmake` fails with "Permission denied".
+- **`wasm_singlethread` is deliberate.** The multithreaded kit needs COOP/COEP
+  cross-origin-isolation headers from whatever hosts the page, and this app has
+  no use for threads.
+
+The payload is ~64 MB raw, ~18 MB gzipped: a 35 MB `.wasm`, and `cards.db`
+packaged whole into a 29 MB `.data` the page fetches before it starts. Serve it
+compressed. Shrinking the card database is the highest-leverage thing available
+if first load ever matters.
+
+**Decks do not survive a page reload yet.** They are written into Emscripten's
+in-memory filesystem, which the browser discards; `Db::flush()` is the hook
+where the copy out to IndexedDB goes, and it is called from all eleven mutators
+already. Everything else works — search, filters, the card grid, importing,
+export — against the full 31,830-card database.
+
 ## Setup notes
 
 The ingest step is required before the first launch and takes a few minutes: it
