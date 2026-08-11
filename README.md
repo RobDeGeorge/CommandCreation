@@ -120,6 +120,29 @@ change, coalescing calls that overlap.
 Two consequences worth knowing: decks are **per-browser, not per-user** until
 accounts exist, and clearing site data deletes them.
 
+## The site
+
+`web/` is the landing page, and `scripts/build-site.sh` assembles it with the
+browser build into `site/` — page at the root, app under `app/`:
+
+```bash
+./scripts/build-site.sh            # or --build to rebuild the wasm first
+python3 -m http.server 8765 --directory site
+```
+
+The landing page is deliberately **not** the app. It is plain HTML and one
+stylesheet, about 155 KB gzipped against the builder's 17 MB, because a first
+impression that costs a 17 MB download is not one, and because a link preview
+and a search engine need something they can actually read. It carries the app's
+own PICO-8 palette and bitmap face so the two read as one product.
+
+Static files with no server-side anything, so any static host works. Two things
+that host must do:
+
+- send `.wasm` as **`application/wasm`**, or the browser cannot stream-compile
+  and buffers all 35 MB before it starts
+- **compress**: ~52 MB raw against ~17 MB gzipped
+
 ## Setup notes
 
 The ingest step is required before the first launch and takes a few minutes: it

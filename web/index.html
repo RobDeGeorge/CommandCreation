@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Command Creation — a pixel-art Commander deck builder</title>
+<meta name="description" content="Build Magic: The Gathering Commander decks against the whole legal card pool, with the format's rules checked as you go. Runs in your browser.">
+
+<meta property="og:title" content="Command Creation">
+<meta property="og:description" content="A pixel-art deck builder for Magic: The Gathering Commander. Runs in your browser.">
+<meta property="og:image" content="assets/screenshot.jpg">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%231d2b53'/><rect x='3' y='2' width='10' height='12' fill='%23ffec27'/></svg>">
+</head>
+<body>
+
+<header class="bar">
+  <span class="wordmark">Command&nbsp;Creation</span>
+  <nav>
+    <a href="https://github.com/RobDeGeorge/CommandCreation">Source</a>
+  </nav>
+</header>
+
+<main>
+
+  <section class="hero">
+    <h1>Build a Commander deck<br><span class="hot">without leaving the page.</span></h1>
+    <p class="lede">
+      Search all 31,830 Commander-legal cards, build lists and decks side by side,
+      and have every deck check itself against the format while you work.
+    </p>
+
+    <a class="cta" href="app/mtgdeck.html">Open&nbsp;the&nbsp;builder</a>
+
+    <!-- Said before the click, not after it. The card database is downloaded
+         whole so that searching is instant afterwards, and a visitor who is not
+         warned reads a slow first load as a broken page. -->
+    <p class="fineprint">
+      First visit downloads about 17&nbsp;MB and takes a few seconds.
+      Nothing to install, and no account needed.
+    </p>
+    <p class="fineprint desktop-note">
+      Built for a keyboard and mouse — a phone will load it, but the layout
+      wants a wide screen.
+    </p>
+  </section>
+
+  <section class="shot">
+    <picture>
+      <source srcset="assets/screenshot.webp" type="image/webp">
+      <img src="assets/screenshot.jpg" width="1280" height="686"
+           alt="The deck builder: a filter panel shaped like a Magic card on the left,
+                a grid of card images in the middle, and a deck list on the right."
+           loading="lazy" decoding="async">
+    </picture>
+  </section>
+
+  <section class="grid">
+    <article>
+      <h2>The whole pool</h2>
+      <p>Every Commander-legal card, filtered by colour identity, mana value,
+         type, subtype, rules text, flavour text, artist, set, rarity, year,
+         power and toughness — in any combination.</p>
+    </article>
+    <article>
+      <h2>Rules as you go</h2>
+      <p>A deck checks itself continuously: 100 cards, singleton, and colour
+         identity against your commander. No submit button, no surprises at
+         the table.</p>
+    </article>
+    <article>
+      <h2>Bring your decks</h2>
+      <p>Paste a list from Moxfield, Archidekt, MTGO, TappedOut or Deckstats
+         and it resolves the names for you. Export back out in three formats.</p>
+    </article>
+    <article>
+      <h2>Lists and decks</h2>
+      <p>Keep loose piles of cards next to real decks. A list becomes a deck
+         the moment you give it a commander.</p>
+    </article>
+  </section>
+
+  <section class="note">
+    <h2>Where your decks live</h2>
+    <p>
+      In this browser, for now — they survive closing the tab, but they do not
+      follow you to another machine, and clearing site data clears them.
+      Accounts and syncing are being built; until then, use
+      <strong>Export</strong> for anything you would be sad to lose.
+    </p>
+  </section>
+
+</main>
+
+<footer>
+  <p>
+    Card data and images from <a href="https://scryfall.com">Scryfall</a>.
+  </p>
+  <p class="legal">
+    Portions of the materials used are property of Wizards of the Coast.
+    ©Wizards of the Coast LLC. Command Creation is unofficial Fan Content
+    permitted under the Wizards of the Coast Fan Content Policy, and is not
+    approved or endorsed by Wizards.
+  </p>
+</footer>
+
+</body>
+</html>
