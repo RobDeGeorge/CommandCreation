@@ -17,6 +17,7 @@
 #include <QSqlError>
 #include <QSqlRecord>
 #include <QTimer>
+#include <QUuid>
 
 #if defined(Q_OS_WASM)
 #include <emscripten.h>
@@ -84,6 +85,21 @@ QString decksDir()
 #else
     return dataDir();
 #endif
+}
+
+// The name a list answers to once it leaves this machine.
+//
+// `lists.id` is an autoincrementing integer, so the deck that is 3 here is a
+// different deck that is also 3 on a phone. Sync needs one name that means the
+// same deck everywhere, and it has to be pickable offline — waiting for a
+// server to assign an id would mean no deck could be made without a signal.
+// A uuid is that: generated locally, unique without asking anybody.
+//
+// Hyphenated and unbraced, which is the form Postgres accepts as `uuid`
+// directly, so the value crosses to Supabase without reformatting.
+QString newUuid()
+{
+    return QUuid::createUuid().toString(QUuid::WithoutBraces);
 }
 
 // A filter key carries a value only when it means something. Note that 0 is a
@@ -234,7 +250,8 @@ void Db::ensureDeckTables()
             partner_id TEXT,
             notes TEXT,
             created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
+            updated_at TEXT NOT NULL,
+            uuid TEXT
         ))"));
     exec(QStringLiteral("CREATE UNIQUE INDEX IF NOT EXISTS decks.idx_list_name"
                         " ON lists(name COLLATE NOCASE)"));
@@ -258,7 +275,44 @@ void Db::ensureDeckTables()
     if (!cols.contains(QStringLiteral("label")))
         exec(QStringLiteral("ALTER TABLE decks.list_cards ADD COLUMN label TEXT"));
 
+    ensureListUuids();
+
     exec(QStringLiteral("PRAGMA foreign_keys = ON"));
+}
+
+void Db::ensureListUuids()
+{
+    // Every list carries a uuid, including the ones made before there was any
+    // such thing. Backfilling here rather than at sync time means a deck keeps
+    // one identity for its whole life: if the id were minted on first upload
+    // instead, the same deck opened on two devices while signed out would
+    // arrive as two decks.
+    QStringList cols;
+    QSqlQuery info = exec(QStringLiteral("PRAGMA decks.table_info(lists)"));
+    while (info.next())
+        cols << info.value(1).toString();
+    if (!cols.contains(QStringLiteral("uuid")))
+        exec(QStringLiteral("ALTER TABLE decks.lists ADD COLUMN uuid TEXT"));
+
+    QList<int> blank;
+    QSqlQuery missing = exec(QStringLiteral(
+        "SELECT id FROM decks.lists WHERE uuid IS NULL OR uuid = ''"));
+    while (missing.next())
+        blank << missing.value(0).toInt();
+
+    if (!blank.isEmpty()) {
+        // One commit for the whole backfill — this runs on the first launch
+        // after upgrading, against however many lists someone has.
+        m_db.transaction();
+        for (int id : blank)
+            exec(QStringLiteral("UPDATE decks.lists SET uuid=? WHERE id=?"), {newUuid(), id});
+        m_db.commit();
+    }
+
+    // Unique so that a bug which reuses one is a failed write here rather than
+    // two decks quietly merging into one on the server.
+    exec(QStringLiteral("CREATE UNIQUE INDEX IF NOT EXISTS decks.idx_list_uuid"
+                        " ON lists(uuid)"));
 }
 
 void Db::ensureCardColumns()
@@ -747,12 +801,16 @@ int Db::createList(const QString &name, const QString &kind)
 
     const QString stamp = now();
     QSqlQuery query(m_db);
-    query.prepare(QStringLiteral("INSERT INTO decks.lists (name, kind, created_at, updated_at)"
-                                 " VALUES (?,?,?,?)"));
+    query.prepare(QStringLiteral("INSERT INTO decks.lists"
+                                 " (name, kind, created_at, updated_at, uuid)"
+                                 " VALUES (?,?,?,?,?)"));
     query.addBindValue(trimmed);
     query.addBindValue(kind);
     query.addBindValue(stamp);
     query.addBindValue(stamp);
+    // A copy made by duplicateList() gets here too, and gets its own uuid —
+    // it is a new deck, not another device's view of the one it came from.
+    query.addBindValue(newUuid());
     if (!query.exec())
         return 0; // duplicate name — the caller reports it
     flush();

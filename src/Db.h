@@ -135,6 +135,7 @@ private:
     static QVariantMap rowOf(const QSqlQuery &query);
 
     void ensureCardColumns();
+    void ensureListUuids();
     void ensureBackFaces();
     void ensureSetIcons();
     void ensureDeckTables();
