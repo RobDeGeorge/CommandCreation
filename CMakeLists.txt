@@ -50,9 +50,24 @@ qt_add_qml_module(mtgdeck
 target_link_libraries(mtgdeck PRIVATE
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Sql Qt6::Network)
 
-# data/cards.db and data/decks.db are resolved against the source tree rather
-# than the working directory, so the app finds them however it is launched. The
-# WebAssembly build will have to replace this with a preloaded path; it is
-# deliberately the single place that assumption lives.
+# Where a build run from this tree looks for data/cards.db and data/decks.db:
+# against the sources rather than the working directory, so the app finds them
+# however it is launched. It is the last of the three cases in Db.cpp's
+# dataDir() — an installed copy prefers data/ beside the binary, and the
+# WebAssembly build ignores this entirely for its preloaded path.
 target_compile_definitions(mtgdeck PRIVATE
     MTG_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+
+# A copy somebody else can run:
+#
+#   cmake --install build --prefix dist
+#
+# lays down dist/bin/mtgdeck beside dist/bin/data/cards.db, which is the layout
+# dataDir() checks first — so the installed copy reads its own database instead
+# of the source tree it happened to be built in.
+#
+# cards.db only. decks.db holds whoever-built-this's own lists, and shipping it
+# would hand them to everyone who downloads the app; SQLite's ATTACH creates the
+# file on first run, and ensureDeckTables() fills in the schema.
+install(TARGETS mtgdeck RUNTIME DESTINATION bin)
+install(FILES data/cards.db DESTINATION bin/data OPTIONAL)

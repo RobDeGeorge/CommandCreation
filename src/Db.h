@@ -97,6 +97,20 @@ public:
     // wants nothing but the two strings.
     QList<QPair<QString, QString>> allCardNames();
 
+    // Push deck writes somewhere they survive the app closing.
+    //
+    // Nothing at all on desktop: by the time a mutator above returns, SQLite
+    // has already written to a real file. Under WebAssembly that write landed
+    // in Emscripten's in-memory filesystem, which the browser discards on
+    // reload, and it has to be copied out to IndexedDB — see the definition.
+    //
+    // Every method above that changes decks.db calls this, which is why none
+    // of them need a #ifdef of their own. The call sites are here now, while
+    // the desktop build can still show they are complete: adding them later,
+    // against a filesystem that forgets in silence, is how you discover the
+    // one you missed by losing somebody's deck.
+    void flush();
+
     // The timestamp written into created_at/updated_at. Ends "+00:00" rather
     // than Qt's "Z" on purpose: the rows already in decks.db were written that
     // way, and updated_at is compared as text to decide which list to reopen —

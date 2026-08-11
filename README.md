@@ -44,6 +44,26 @@ C++ changes then need `cmake --build`:
 MTG_QML_DIR=qml ./build/mtgdeck
 ```
 
+## A copy someone else can run
+
+`./build/mtgdeck` reads its databases out of this source tree, so it only works
+on the machine it was built on. To get a copy that doesn't:
+
+```bash
+cmake --install build --prefix dist
+```
+
+That lays down `dist/bin/mtgdeck` beside `dist/bin/data/cards.db`, and the app
+prefers a `data/` next to the binary over the source tree — so `dist/` can be
+moved or archived and still runs. Your own `data/decks.db` is deliberately *not*
+installed: it holds your lists, and the app creates an empty one on first launch.
+
+Qt's own libraries are not bundled by this, so the target machine still needs
+Qt 6.5+ installed. A self-contained bundle would want `qt_generate_deploy_app_script`
+(or `linuxdeployqt` / `windeployqt`) on top.
+
+## Setup notes
+
 The ingest step is required before the first launch and takes a few minutes: it
 pulls Scryfall's Oracle bulk data, filters it to Commander-legal cards, and
 writes `data/cards.db` (~29 MB, ~31k cards). That file and your own

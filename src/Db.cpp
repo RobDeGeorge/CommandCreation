@@ -36,12 +36,31 @@ const QStringList kTwoFacedLayouts = {
     "transform", "modal_dfc", "reversible_card", "double_faced_token",
 };
 
-// Where the databases live: alongside the sources rather than the binary, so
-// the app opens the same two files whichever directory it is launched from.
+// Where the databases live. Three cases, tried in this order:
+//
+//   WebAssembly  a fixed path in Emscripten's virtual filesystem, which
+//                CMakeLists.txt preloads data/ into. There is no host
+//                filesystem underneath to fall back to.
+//   installed    data/ beside the binary — the layout `cmake --install` lays
+//                down. This is what lets a copy of the build run on a machine
+//                that never had the sources.
+//   built here   the source tree, so ./build/mtgdeck opens the same two files
+//                whichever directory it is launched from.
+//
+// The installed case looks for cards.db rather than the directory: a data/
+// beside the binary that is empty means a build copied without its database,
+// and falling through to the source tree there is more useful than failing.
 QString dataDir()
 {
-    QDir dir(QStringLiteral(MTG_SOURCE_DIR));
-    return dir.filePath(QStringLiteral("data"));
+#if defined(Q_OS_WASM)
+    return QStringLiteral("/data");
+#else
+    const QString beside =
+        QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("data"));
+    if (QFileInfo::exists(QDir(beside).filePath(QStringLiteral("cards.db"))))
+        return beside;
+    return QDir(QStringLiteral(MTG_SOURCE_DIR)).filePath(QStringLiteral("data"));
+#endif
 }
 
 // A filter key carries a value only when it means something. Note that 0 is a
@@ -290,6 +309,17 @@ void Db::ensureSetIcons()
     QSqlQuery count = exec(QStringLiteral("SELECT COUNT(*) FROM set_icons"));
     if (count.next() && count.value(0).toInt() > 0)
         return;
+
+    // The browser cannot run the fetch below. It drives a nested QEventLoop,
+    // which Emscripten's single-threaded event loop does not support, and it
+    // sets a User-Agent header, which browsers forbid. The WebAssembly build
+    // ships a cards.db that ingest.py has already filled this table in, so
+    // reaching here means that database was built wrong — and cards drawn
+    // without their set icons is the better way to find that out than a tab
+    // that never finishes loading.
+#if defined(Q_OS_WASM)
+    return;
+#endif
 
     QNetworkAccessManager network;
     QString url = QStringLiteral("https://api.scryfall.com/sets");
@@ -651,6 +681,12 @@ QVariantList Db::listSets()
 // Lists and decks
 // ---------------------------------------------------------------------------
 
+void Db::flush()
+{
+    // Empty on desktop, and see Db.h for why it is still called. The
+    // WebAssembly build fills this in with a syncfs() out to IndexedDB.
+}
+
 void Db::touch(int listId)
 {
     exec(QStringLiteral("UPDATE decks.lists SET updated_at=? WHERE id=?"), {now(), listId});
@@ -685,6 +721,7 @@ int Db::createList(const QString &name, const QString &kind)
     query.addBindValue(stamp);
     if (!query.exec())
         return 0; // duplicate name — the caller reports it
+    flush();
     return query.lastInsertId().toInt();
 }
 
@@ -698,7 +735,10 @@ bool Db::renameList(int listId, const QString &name)
     query.addBindValue(trimmed);
     query.addBindValue(now());
     query.addBindValue(listId);
-    return query.exec();
+    if (!query.exec())
+        return false;
+    flush();
+    return true;
 }
 
 void Db::deleteList(int listId)
@@ -707,6 +747,7 @@ void Db::deleteList(int listId)
     // per-connection pragma and this must hold whoever opened the database.
     exec(QStringLiteral("DELETE FROM decks.list_cards WHERE list_id=?"), {listId});
     exec(QStringLiteral("DELETE FROM decks.lists WHERE id=?"), {listId});
+    flush();
 }
 
 int Db::duplicateList(int listId, const QString &name)
@@ -722,6 +763,7 @@ int Db::duplicateList(int listId, const QString &name)
     exec(QStringLiteral("UPDATE decks.lists SET commander_id="
                         "(SELECT commander_id FROM decks.lists WHERE id=?) WHERE id=?"),
          {listId, newId});
+    flush();
     return newId;
 }
 
@@ -745,6 +787,7 @@ void Db::setListKind(int listId, const QString &kind)
 {
     exec(QStringLiteral("UPDATE decks.lists SET kind=?, updated_at=? WHERE id=?"),
          {kind, now(), listId});
+    flush();
 }
 
 void Db::setCommander(int listId, const QString &cardId)
@@ -768,6 +811,7 @@ void Db::setCommander(int listId, const QString &cardId)
                             " VALUES (?,?,1,?) ON CONFLICT(list_id, card_id) DO NOTHING"),
              {listId, cardId, now()});
     }
+    flush();
 }
 
 int Db::addCard(int listId, const QString &cardId, int qty)
@@ -777,6 +821,7 @@ int Db::addCard(int listId, const QString &cardId, int qty)
                         " ON CONFLICT(list_id, card_id) DO UPDATE SET qty = qty + excluded.qty"),
          {listId, cardId, qty, now()});
     touch(listId);
+    flush();
     QSqlQuery query = exec(QStringLiteral("SELECT qty FROM decks.list_cards"
                                           " WHERE list_id=? AND card_id=?"),
                            {listId, cardId});
@@ -805,6 +850,7 @@ int Db::addCards(int listId, const QList<QPair<QString, int>> &pairs)
     }
     touch(listId);
     m_db.commit();
+    flush(); // after the commit, so one import is one sync
     return pairs.size();
 }
 
@@ -815,6 +861,7 @@ int Db::setCardQty(int listId, const QString &cardId, int qty)
     exec(QStringLiteral("UPDATE decks.list_cards SET qty=? WHERE list_id=? AND card_id=?"),
          {qty, listId, cardId});
     touch(listId);
+    flush();
     return qty;
 }
 
@@ -826,6 +873,7 @@ QString Db::setCardLabel(int listId, const QString &cardId, const QString &label
     exec(QStringLiteral("UPDATE decks.list_cards SET label=? WHERE list_id=? AND card_id=?"),
          {kept.isEmpty() ? QVariant() : QVariant(kept), listId, cardId});
     touch(listId);
+    flush();
     return kept;
 }
 
@@ -846,6 +894,7 @@ int Db::removeCard(int listId, const QString &cardId)
                         " WHERE id=? AND commander_id=?"),
          {listId, cardId});
     touch(listId);
+    flush();
     return 0;
 }
 
