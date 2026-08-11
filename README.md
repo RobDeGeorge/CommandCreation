@@ -103,11 +103,16 @@ packaged whole into a 29 MB `.data` the page fetches before it starts. Serve it
 compressed. Shrinking the card database is the highest-leverage thing available
 if first load ever matters.
 
-**Decks do not survive a page reload yet.** They are written into Emscripten's
-in-memory filesystem, which the browser discards; `Db::flush()` is the hook
-where the copy out to IndexedDB goes, and it is called from all eleven mutators
-already. Everything else works — search, filters, the card grid, importing,
-export — against the full 31,830-card database.
+Decks persist in IndexedDB. `cards.db` is preloaded read-only into the in-memory
+filesystem at `/data`, while `decks.db` sits alone at `/decks` under an IDBFS
+mount — separate directories on purpose, since a mount over the shared one would
+shadow the preloaded 29 MB. `wasm/pre.js` reads the decks back before `main()`
+runs (as an Emscripten run dependency, the one way to get an async step before
+startup without Asyncify), and `Db::flush()` pushes them out again after every
+change, coalescing calls that overlap.
+
+Two consequences worth knowing: decks are **per-browser, not per-user** until
+accounts exist, and clearing site data deletes them.
 
 ## Setup notes
 

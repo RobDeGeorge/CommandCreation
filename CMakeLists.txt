@@ -86,7 +86,19 @@ install(FILES data/cards.db DESTINATION bin/data OPTIONAL)
 # this is the single biggest thing standing between a visitor and a first
 # paint. decks.db is deliberately not preloaded: ATTACH creates it on first
 # run, and it lives only in memory until Db::flush() pushes it to IndexedDB.
+#
+# decks.db is not preloaded and not packaged. It is mounted from IndexedDB at
+# /decks by wasm/pre.js, which is injected here rather than by editing the
+# generated mtgdeck.html — that file is rewritten on every build. -lidbfs.js is
+# what puts the IDBFS backend in the binary; without it the mount fails at
+# runtime and every deck is lost on reload, silently.
 if(EMSCRIPTEN)
+    set(MTG_PRE_JS "${CMAKE_CURRENT_SOURCE_DIR}/wasm/pre.js")
     target_link_options(mtgdeck PRIVATE
-        "SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/data/cards.db@/data/cards.db")
+        "SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/data/cards.db@/data/cards.db"
+        "SHELL:--pre-js ${MTG_PRE_JS}"
+        -lidbfs.js)
+    # --pre-js is not a dependency CMake infers, so an edit to pre.js alone
+    # would otherwise not relink.
+    set_target_properties(mtgdeck PROPERTIES LINK_DEPENDS "${MTG_PRE_JS}")
 endif()

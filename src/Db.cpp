@@ -18,6 +18,10 @@
 #include <QSqlRecord>
 #include <QTimer>
 
+#if defined(Q_OS_WASM)
+#include <emscripten.h>
+#endif
+
 namespace {
 
 // The card columns every query hands back.
@@ -60,6 +64,25 @@ QString dataDir()
     if (QFileInfo::exists(QDir(beside).filePath(QStringLiteral("cards.db"))))
         return beside;
     return QDir(QStringLiteral(MTG_SOURCE_DIR)).filePath(QStringLiteral("data"));
+#endif
+}
+
+// Where decks.db lives, which under WebAssembly is deliberately not where
+// cards.db lives.
+//
+// The two files have opposite needs in the browser: cards.db is preloaded into
+// an in-memory filesystem and never written, while decks.db is the only thing
+// the user authors and has to survive the tab closing. Keeping them apart lets
+// wasm/pre.js mount IndexedDB over this directory alone — a mount on the shared
+// one would shadow the preloaded 29 MB and leave the app with no cards at all.
+//
+// On desktop there is one directory, as there has always been.
+QString decksDir()
+{
+#if defined(Q_OS_WASM)
+    return QStringLiteral("/decks");
+#else
+    return dataDir();
 #endif
 }
 
@@ -169,7 +192,7 @@ QString Db::cardColumns()
 bool Db::open(QString *error)
 {
     const QString cards = QDir(dataDir()).filePath(QStringLiteral("cards.db"));
-    const QString decks = QDir(dataDir()).filePath(QStringLiteral("decks.db"));
+    const QString decks = QDir(decksDir()).filePath(QStringLiteral("decks.db"));
 
     if (!QFileInfo::exists(cards)) {
         if (error)
@@ -683,8 +706,19 @@ QVariantList Db::listSets()
 
 void Db::flush()
 {
-    // Empty on desktop, and see Db.h for why it is still called. The
-    // WebAssembly build fills this in with a syncfs() out to IndexedDB.
+#if defined(Q_OS_WASM)
+    // SQLite has written to /decks, which is an IndexedDB mount held in memory
+    // until something copies it out. wasm/pre.js owns the copying, including
+    // coalescing calls that arrive while one is still in flight; this is only
+    // the nudge. It returns immediately — the write lands a moment later, which
+    // is why the browser is asked to save after every change rather than at
+    // exit, an event a closing tab does not reliably give us.
+    EM_ASM({
+        if (Module["mtgSyncDecks"])
+            Module["mtgSyncDecks"]();
+    });
+#endif
+    // Nothing on desktop: the mutator's write already went to a real file.
 }
 
 void Db::touch(int listId)
