@@ -136,7 +136,8 @@ private:
 
     void ensureCardColumns();
     void ensureListUuids();
-    void ensureBackFaces();
+    // ensureBackFaces() is gone: the back-face URL is derived in cardColumns()
+    // from image_id and has_back, so there is no column left to backfill.
     void ensureSetIcons();
     void ensureDeckTables();
     void touch(int listId);

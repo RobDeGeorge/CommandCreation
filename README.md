@@ -98,10 +98,16 @@ Four things that will cost you an afternoon if you guess at them:
   cross-origin-isolation headers from whatever hosts the page, and this app has
   no use for threads.
 
-The payload is ~64 MB raw, ~18 MB gzipped: a 35 MB `.wasm`, and `cards.db`
-packaged whole into a 29 MB `.data` the page fetches before it starts. Serve it
-compressed. Shrinking the card database is the highest-leverage thing available
-if first load ever matters.
+The payload is ~52 MB raw, ~17 MB gzipped: a 35 MB `.wasm`, and `cards.db`
+packaged whole into a 17 MB `.data` the page fetches before it starts. Serve it
+compressed, and with `application/wasm` on the `.wasm` — without that MIME type
+the browser cannot stream-compile and buffers the whole thing first.
+
+Note what the two columns say. Slimming `cards.db` from 29 MB took 12 MB off the
+raw size but only ~1.3 MB off the wire, because the bytes removed were repeated
+URL prefixes and gzip was already collapsing them. The win that matters is at
+the other end: the `.data` is unpacked into memory at startup, so it is 12 MB
+less browser RAM and less time spent writing it there.
 
 Decks persist in IndexedDB. `cards.db` is preloaded read-only into the in-memory
 filesystem at `/data`, while `decks.db` sits alone at `/decks` under an IDBFS

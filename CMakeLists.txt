@@ -94,11 +94,17 @@ install(FILES data/cards.db DESTINATION bin/data OPTIONAL)
 # runtime and every deck is lost on reload, silently.
 if(EMSCRIPTEN)
     set(MTG_PRE_JS "${CMAKE_CURRENT_SOURCE_DIR}/wasm/pre.js")
+    set(MTG_CARDS_DB "${CMAKE_CURRENT_SOURCE_DIR}/data/cards.db")
     target_link_options(mtgdeck PRIVATE
-        "SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/data/cards.db@/data/cards.db"
+        "SHELL:--preload-file ${MTG_CARDS_DB}@/data/cards.db"
         "SHELL:--pre-js ${MTG_PRE_JS}"
         -lidbfs.js)
-    # --pre-js is not a dependency CMake infers, so an edit to pre.js alone
-    # would otherwise not relink.
-    set_target_properties(mtgdeck PROPERTIES LINK_DEPENDS "${MTG_PRE_JS}")
+
+    # Both of these are consumed at link time by emcc, and CMake infers neither
+    # as a dependency: without them a rebuild after re-running ingest.py, or
+    # after editing pre.js, relinks nothing and silently keeps serving the
+    # previous mtgdeck.data. That failure is quiet and convincing — the app
+    # comes up, the cards are all there, and only something small is missing.
+    set_target_properties(mtgdeck PROPERTIES
+        LINK_DEPENDS "${MTG_PRE_JS};${MTG_CARDS_DB}")
 endif()

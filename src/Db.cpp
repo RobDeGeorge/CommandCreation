@@ -31,15 +31,45 @@ const QStringList kColumns = {
     "power", "toughness",
     "color_identity", "keywords", "rarity", "artist", "set_name",
     "can_be_commander", "frame",
-    "edhrec_rank", "image_normal", "image_art_crop", "image_small",
-    "image_back_normal",
+    "edhrec_rank",
 };
 
-// The layouts that are two cards printed back to back. Split, flip, adventure
-// and saga cards are one image with two halves — there is nothing to turn over.
-const QStringList kTwoFacedLayouts = {
-    "transform", "modal_dfc", "reversible_card", "double_faced_token",
-};
+// One image URL, rebuilt rather than read.
+//
+// Scryfall serves every size and both faces from one shape:
+//
+//     https://cards.scryfall.io/<size>/<face>/<a>/<b>/<image-id>.jpg?<ts>
+//
+// where <a> and <b> are the first two characters of the image id. The four URLs
+// a card needs are therefore two stored values arranged four ways. Keeping them
+// whole cost 9 MB of a 29 MB database — 31,830 copies of the same prefix — and
+// that database is downloaded in full before the browser build can start.
+//
+// The bare expression; callers alias it to the column name it replaced, so the
+// models map the same roles and QML is untouched. See get_image_key() in
+// scripts/ingest.py for the other half.
+//
+// `table` is which relation to read image_id from — "cards" for the gallery,
+// but the deck queries join the card in under "c" and need the same URL built
+// against that.
+QString imageUrl(const QString &size, const QString &face,
+                 const QString &table = QStringLiteral("cards"))
+{
+    return QStringLiteral("('https://cards.scryfall.io/%1/%2/'"
+                          " || substr(%3.image_id,1,1) || '/'"
+                          " || substr(%3.image_id,2,1) || '/'"
+                          " || %3.image_id || '.jpg?' || %3.image_ts)")
+        .arg(size, face, table);
+}
+
+// The far side, and NULL for the cards that haven't got one. The back of a
+// split or adventure card is a URL that 404s, and everything above reads a
+// non-empty value here as "this one turns over".
+QString backImageUrl(const QString &table = QStringLiteral("cards"))
+{
+    return QStringLiteral("(CASE WHEN %1.has_back THEN %2 END)")
+        .arg(table, imageUrl(QStringLiteral("normal"), QStringLiteral("back"), table));
+}
 
 // Where the databases live. Three cases, tried in this order:
 //
@@ -195,9 +225,22 @@ QVariantList Db::rowsOf(QSqlQuery &query)
 QString Db::cardColumns()
 {
     QStringList qualified;
-    qualified.reserve(kColumns.size());
+    qualified.reserve(kColumns.size() + 4);
     for (const QString &c : kColumns)
         qualified << QStringLiteral("cards.") + c;
+
+    const auto aliased = [](const QString &expr, const char *alias) {
+        return QStringLiteral("%1 AS %2").arg(expr, QLatin1String(alias));
+    };
+    qualified << aliased(imageUrl(QStringLiteral("normal"), QStringLiteral("front")),
+                         "image_normal")
+              << aliased(imageUrl(QStringLiteral("art_crop"), QStringLiteral("front")),
+                         "image_art_crop")
+              << aliased(imageUrl(QStringLiteral("small"), QStringLiteral("front")),
+                         "image_small");
+
+    qualified << aliased(backImageUrl(), "image_back_normal");
+
     return qualified.join(QLatin1Char(','));
 }
 
@@ -229,8 +272,21 @@ bool Db::open(QString *error)
     // nothing you authored may live inside it.
     exec(QStringLiteral("ATTACH DATABASE ? AS decks"), {decks});
 
+    // A database from before the art was stored as an id rather than four URLs
+    // cannot be migrated in place — the columns it needs were never written.
+    // Every query would come back with blank art, so say what to do instead.
+    QStringList cardCols;
+    QSqlQuery cardInfo = exec(QStringLiteral("PRAGMA table_info(cards)"));
+    while (cardInfo.next())
+        cardCols << cardInfo.value(1).toString();
+    if (!cardCols.contains(QStringLiteral("image_id"))) {
+        if (error)
+            *error = QStringLiteral("data/cards.db predates the slimmed card schema"
+                                    " — rebuild it: python3 scripts/ingest.py");
+        return false;
+    }
+
     ensureCardColumns();
-    ensureBackFaces();
     ensureSetIcons();
     ensureDeckTables();
     return true;
@@ -331,40 +387,6 @@ void Db::ensureCardColumns()
         if (!cols.contains(col))
             exec(QStringLiteral("ALTER TABLE cards ADD COLUMN %1 TEXT").arg(col));
     }
-}
-
-void Db::ensureBackFaces()
-{
-    // Give databases built before back faces existed one anyway.
-    //
-    // Scryfall serves the two sides of a card from the same path with one
-    // segment different — .../normal/front/0/d/<id>.jpg and
-    // .../normal/back/0/d/<id>.jpg — so the back of a card we already have the
-    // front of can be named without fetching anything. Only for the layouts
-    // that have a back at all: on a split or adventure card that URL is a 404.
-    //
-    // A re-run of scripts/ingest.py supersedes this with the URLs Scryfall
-    // actually published, which is why this runs once — the moment the column
-    // is added.
-    QStringList cols;
-    QSqlQuery info = exec(QStringLiteral("PRAGMA table_info(cards)"));
-    while (info.next())
-        cols << info.value(1).toString();
-    if (cols.contains(QStringLiteral("image_back_normal")))
-        return;
-
-    exec(QStringLiteral("ALTER TABLE cards ADD COLUMN image_back_normal TEXT"));
-    const QString marks = QStringList(QList<QString>(kTwoFacedLayouts.size(),
-                                                     QStringLiteral("?")))
-                              .join(QLatin1Char(','));
-    QVariantList params;
-    for (const QString &layout : kTwoFacedLayouts)
-        params << layout;
-    exec(QStringLiteral("UPDATE cards SET image_back_normal ="
-                        " replace(image_normal, '/front/', '/back/')"
-                        " WHERE layout IN (%1) AND image_normal LIKE '%/front/%'")
-             .arg(marks),
-         params);
 }
 
 void Db::ensureSetIcons()
@@ -782,14 +804,17 @@ void Db::touch(int listId)
 
 QVariantList Db::listLists()
 {
-    QSqlQuery query = exec(QStringLiteral(
-        "SELECT l.id, l.name, l.kind, l.commander_id, l.notes, l.updated_at,"
-        " c.name AS commander_name, c.color_identity AS commander_identity,"
-        " c.image_art_crop AS commander_art,"
-        " (SELECT COALESCE(SUM(qty),0) FROM decks.list_cards WHERE list_id=l.id)"
-        "   AS card_count"
-        " FROM decks.lists l LEFT JOIN cards c ON c.id = l.commander_id"
-        " ORDER BY l.name COLLATE NOCASE"));
+    QSqlQuery query = exec(
+        QStringLiteral(
+            "SELECT l.id, l.name, l.kind, l.commander_id, l.notes, l.updated_at,"
+            " c.name AS commander_name, c.color_identity AS commander_identity,"
+            " %1 AS commander_art,"
+            " (SELECT COALESCE(SUM(qty),0) FROM decks.list_cards WHERE list_id=l.id)"
+            "   AS card_count"
+            " FROM decks.lists l LEFT JOIN cards c ON c.id = l.commander_id"
+            " ORDER BY l.name COLLATE NOCASE")
+            .arg(imageUrl(QStringLiteral("art_crop"), QStringLiteral("front"),
+                          QStringLiteral("c"))));
     return rowsOf(query);
 }
 
@@ -864,13 +889,18 @@ QVariantMap Db::getList(int listId)
     QSqlQuery query = exec(QStringLiteral(
                                "SELECT l.*, c.name AS commander_name,"
                                " c.color_identity AS commander_identity,"
-                               " c.image_art_crop AS commander_art,"
+                               " %1 AS commander_art,"
                                " c.mana_cost AS commander_mana,"
                                " c.rarity AS commander_rarity,"
-                               " c.image_normal AS commander_image,"
-                               " c.image_back_normal AS commander_back"
+                               " %2 AS commander_image,"
+                               " %3 AS commander_back"
                                " FROM decks.lists l LEFT JOIN cards c ON c.id = l.commander_id"
-                               " WHERE l.id=?"),
+                               " WHERE l.id=?")
+                               .arg(imageUrl(QStringLiteral("art_crop"),
+                                             QStringLiteral("front"), QStringLiteral("c")),
+                                    imageUrl(QStringLiteral("normal"),
+                                             QStringLiteral("front"), QStringLiteral("c")),
+                                    backImageUrl(QStringLiteral("c"))),
                            {listId});
     return query.next() ? rowOf(query) : QVariantMap();
 }
