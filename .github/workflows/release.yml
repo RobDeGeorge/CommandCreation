@@ -259,8 +259,14 @@ jobs:
           # platforms;android-36 is not optional and not the target SDK: the
           # compile SDK is the newest platform installed, and androidx.core
           # refuses to be compiled against anything older.
-          sdkmanager --install "ndk;$pkg" "platforms;android-36" \
-                     "build-tools;36.0.0" "platform-tools" > /dev/null
+          # Not on PATH on this runner, and the name of the thing that is
+          # missing ("sdkmanager: command not found") says nothing about which
+          # SDK it belongs to. It lives with the command-line tools.
+          sdkmanager="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$sdkmanager" ] || sdkmanager=$(command -v sdkmanager) || {
+            echo "no sdkmanager under $ANDROID_SDK_ROOT" >&2; exit 1; }
+          "$sdkmanager" --install "ndk;$pkg" "platforms;android-36" \
+                        "build-tools;36.0.0" "platform-tools" > /dev/null
           echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/$pkg" >> "$GITHUB_ENV"
 
       - uses: actions/download-artifact@v4
