@@ -1,5 +1,21 @@
 cmake_minimum_required(VERSION 3.21)
-project(mtgdeck LANGUAGES CXX)
+
+# One version, carried by everything that has somewhere to put one: the
+# Android package, the Windows executable's resource, the names of the release
+# archives. .github/workflows/release.yml passes it from the tag it is building,
+# so a release cannot ship packages that disagree with the tag they came from;
+# a build from a working copy just gets the default.
+#
+# The Android version *code* is a separate thing: Play orders updates by it, so
+# it has to be an integer that only ever climbs, where the name is free text.
+# major*10000 + minor*100 + patch keeps the two in step without a second number
+# to remember — 0.9 is 900, and 1.0 is 10000, which is above it.
+set(MTG_VERSION "0.9.0" CACHE STRING "Version these packages carry")
+
+project(mtgdeck VERSION ${MTG_VERSION} LANGUAGES CXX)
+
+math(EXPR MTG_VERSION_CODE "${PROJECT_VERSION_MAJOR} * 10000 \
+     + ${PROJECT_VERSION_MINOR} * 100 + ${PROJECT_VERSION_PATCH}")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -9,7 +25,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick Sql Network)
 qt_standard_project_setup(REQUIRES 6.5)
 
+# The .rc is Windows-only and ignored everywhere else — it is what puts the
+# icon on the .exe in Explorer and on the taskbar. See packaging/mtgdeck.rc.
 qt_add_executable(mtgdeck
+    $<$<BOOL:${WIN32}>:packaging/mtgdeck.rc>
     src/main.cpp
     src/Db.h         src/Db.cpp
     src/DeckRules.h  src/DeckRules.cpp
@@ -76,6 +95,18 @@ target_compile_definitions(mtgdeck PRIVATE
 if(NOT ANDROID)
     install(TARGETS mtgdeck RUNTIME DESTINATION bin)
     install(FILES data/cards.db DESTINATION bin/data OPTIONAL)
+
+    # The desktop entry and the icon, in the places a Linux desktop looks for
+    # them. They are what an AppImage is built out of — linuxdeploy reads the
+    # .desktop to learn the app's name and which binary it launches, and
+    # refuses to build without one — but they are equally what makes a plain
+    # `cmake --install` into /usr/local show up in a menu.
+    if(UNIX)
+        install(FILES packaging/mtgdeck.desktop
+                DESTINATION share/applications)
+        install(FILES packaging/mtgdeck.png
+                DESTINATION share/icons/hicolor/256x256/apps)
+    endif()
 endif()
 
 # The browser has no filesystem to install into. cards.db is packaged into
@@ -160,8 +191,8 @@ if(ANDROID)
         QT_ANDROID_PACKAGE_SOURCE_DIR "${MTG_ANDROID_PACKAGE}"
         QT_ANDROID_APP_NAME "Command Creation"
         QT_ANDROID_PACKAGE_NAME "com.commandcreation.builder"
-        QT_ANDROID_VERSION_NAME "0.1"
-        QT_ANDROID_VERSION_CODE 1
+        QT_ANDROID_VERSION_NAME "${MTG_VERSION}"
+        QT_ANDROID_VERSION_CODE ${MTG_VERSION_CODE}
         # 23 is the floor Qt 6 itself sets. 36 is a target, not a requirement:
         # it only says which behaviour changes the app opts into, and it is
         # separate again from the SDK the package is *compiled* against —

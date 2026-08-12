@@ -225,6 +225,45 @@ years and no emulator you will start by default — the stock x86_64 images cann
 run it. To try it in an emulator, install the `android_x86_64` kit alongside and
 build again with `QT_ANDROID` pointed at that.
 
+## Releases
+
+Publishing a release on GitHub builds all three packages and attaches them to
+it — `.github/workflows/release.yml`. There is nothing to upload by hand:
+
+```bash
+gh release create v0.9.0 --title "v0.9.0" --notes "..."
+```
+
+The version stamped into the packages is read off the tag, so they cannot
+disagree with it. `cards.db` is rebuilt from Scryfall in the first job and
+handed to the other three, which is why a release always ships a current pool
+and why nothing generated is in the repository.
+
+Run it without releasing anything from the Actions tab — the `workflow_dispatch`
+trigger builds all three and skips the upload. That is the way to find out
+whether the workflow still works, rather than finding out during a release.
+
+**The Android package wants a signing key.** Without one it is built debug-
+signed, which installs but is signed with a key Gradle invents on each run —
+so every release looks like a different app to Android and cannot update the
+one before it in place. With these four repository secrets set, it is signed
+properly and consistently:
+
+| secret | what |
+| --- | --- |
+| `ANDROID_KEYSTORE_BASE64` | `base64 -w0 release.keystore` |
+| `ANDROID_KEY_ALIAS` | the alias inside it |
+| `ANDROID_KEYSTORE_PASSWORD` | store password |
+| `ANDROID_KEY_PASSWORD` | key password |
+
+```bash
+keytool -genkeypair -v -keystore release.keystore -alias commandcreation \
+        -keyalg RSA -keysize 2048 -validity 10000
+```
+
+Keep that file. It is not recoverable, and losing it means no future build can
+ever update an installed copy.
+
 ## Setup notes
 
 The ingest step is required before the first launch and takes a few minutes: it

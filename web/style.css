@@ -145,6 +145,20 @@ main > section:last-child { margin-bottom: 3rem; }
 
 .cta:focus-visible { outline: 3px solid var(--blue); outline-offset: 4px; }
 
+/* The download line under the button. Deliberately not a second .cta: two
+ * buttons of equal weight is two decisions, and the browser build is the one
+ * that should be taken without thinking. */
+.downloads {
+    margin: 1.25rem auto 0;
+    font-size: 0.95rem;
+    color: var(--ink-dim);
+}
+
+.downloads a {
+    color: var(--hot);
+    text-underline-offset: 3px;
+}
+
 .fineprint {
     margin: 1.5rem auto 0;
     max-width: 34rem;

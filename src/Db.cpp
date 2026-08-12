@@ -116,13 +116,36 @@ QString dataDir()
 // wasm/pre.js mount IndexedDB over this directory alone — a mount on the shared
 // one would shadow the preloaded 29 MB and leave the app with no cards at all.
 //
-// On desktop there is one directory, as there has always been.
+// Elsewhere it is the same directory as cards.db — until that directory is one
+// nobody may write to, which is what a packaged copy of this app is.
+//
+// An AppImage runs from a read-only squashfs mount, and a copy installed into
+// /usr/local is root's. Both would leave the app unable to create decks.db at
+// all: it comes up, shows the whole card pool, and silently cannot save a
+// single list. So a directory that cannot be written falls through to the
+// user's own application-data directory.
+//
+// Tried in that order, rather than simply always using the private directory,
+// because the source tree *is* writable and that is where every deck built on
+// a development machine already lives. Preferring it keeps those where they
+// are; nothing has to be moved, and the fallback only ever comes up for the
+// packaged copies that could not have decks in the first place.
 QString decksDir()
 {
 #if defined(Q_OS_WASM)
     return QStringLiteral("/decks");
-#else
+#elif defined(Q_OS_ANDROID)
+    // Already the app's own private directory — see dataDir().
     return dataDir();
+#else
+    const QString beside = dataDir();
+    if (QFileInfo(beside).isWritable())
+        return beside;
+
+    const QString own =
+        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir().mkpath(own);
+    return own;
 #endif
 }
 

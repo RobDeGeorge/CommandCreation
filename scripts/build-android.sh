@@ -4,6 +4,9 @@
 #
 #   ./scripts/build-android.sh                  debug .apk
 #   ./scripts/build-android.sh --release        release .apk (unsigned)
+#   ./scripts/build-android.sh --release --sign release .apk, signed with the
+#                                               keystore named in the
+#                                               environment — see --sign below
 #   ./scripts/build-android.sh --install        build, then push it to a
 #                                               connected device over adb
 #
@@ -32,13 +35,37 @@ OUT="$ROOT/build-android"
 
 MODE=Debug
 INSTALL=no
+SIGN=no
 for arg in "$@"; do
     case "$arg" in
         --release) MODE=Release ;;
         --install) INSTALL=yes ;;
+        --sign)    SIGN=yes ;;
         *) echo "unknown option: $arg" >&2; exit 2 ;;
     esac
 done
+
+# Signing is decided when the build is *configured*, not when it runs.
+# QT_ANDROID_SIGN_APK is a CMake variable that puts --sign on the
+# androiddeployqt command line; the keystore itself travels in the environment,
+# which is what keeps the passwords off that command line and out of any log.
+#
+# Setting the four environment variables without this flag does nothing at all,
+# quietly, and leaves you with an unsigned .apk that cannot be installed — so
+# the two halves are checked together here rather than discovered separately.
+SIGN_ARGS=()
+if [[ "$SIGN" == yes ]]; then
+    [[ "$MODE" == Release ]] || {
+        echo "--sign is for --release builds; a debug build is already signed" >&2
+        exit 1; }
+    for var in QT_ANDROID_KEYSTORE_PATH QT_ANDROID_KEYSTORE_ALIAS \
+               QT_ANDROID_KEYSTORE_STORE_PASS QT_ANDROID_KEYSTORE_KEY_PASS; do
+        [[ -n "${!var:-}" ]] || { echo "--sign needs $var set" >&2; exit 1; }
+    done
+    [[ -f "$QT_ANDROID_KEYSTORE_PATH" ]] || {
+        echo "no keystore at $QT_ANDROID_KEYSTORE_PATH" >&2; exit 1; }
+    SIGN_ARGS=(-DQT_ANDROID_SIGN_APK=ON)
+fi
 
 need() {
     local var=$1 what=$2
@@ -69,15 +96,26 @@ fi
     -DCMAKE_BUILD_TYPE="$MODE" \
     -DQT_HOST_PATH="$QT_HOST_PATH" \
     -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" \
-    -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
+    -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT" \
+    "${SIGN_ARGS[@]}"
 
 # `apk` is the target qt_add_executable() generates for an Android build: it
 # builds the library, runs androiddeployqt over it, and drives Gradle. Building
 # the default target alone leaves you with a .so and no package.
 cmake --build "$OUT" --target apk
 
-APK=$(find "$OUT/android-build/build/outputs/apk" -name '*.apk' -print -quit)
+# A signed build writes the signed package beside the unsigned one it was made
+# from, and only one of the two can be installed. Prefer it; there is exactly
+# one .apk to find otherwise.
+APK=$(find "$OUT/android-build/build/outputs/apk" -name '*-signed.apk' -print -quit)
+[[ -n "$APK" ]] || \
+    APK=$(find "$OUT/android-build/build/outputs/apk" -name '*.apk' -print -quit)
 [[ -n "$APK" ]] || { echo "built, but no .apk came out — check the log above" >&2; exit 1; }
+
+if [[ "$SIGN" == yes && "$APK" != *-signed.apk ]]; then
+    echo "asked to sign, but only an unsigned .apk was produced: $APK" >&2
+    exit 1
+fi
 
 printf '%s — %s\n' "$APK" "$(du -h "$APK" | cut -f1)"
 

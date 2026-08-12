@@ -1,0 +1,8 @@
+// The Windows executable's icon. Without a resource like this one an .exe
+// wears the default blank-page icon in Explorer and on the taskbar, whatever
+// the application sets on its own windows at runtime.
+//
+// IDI_ICON1 is not meaningful in itself — Windows shows whichever icon comes
+// first by resource id, so the name only has to sort first, and this is the
+// conventional one to use.
+IDI_ICON1 ICON "mtgdeck.ico"

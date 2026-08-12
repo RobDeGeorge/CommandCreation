@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Command Creation
+GenericName=Commander Deck Builder
+Comment=Build Magic: The Gathering Commander decks against the whole legal card pool
+Exec=mtgdeck
+Icon=mtgdeck
+Terminal=false
+Categories=Game;CardGame;
+Keywords=magic;mtg;commander;edh;deck;

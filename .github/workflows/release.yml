@@ -1,0 +1,348 @@
+# Build the three downloadable packages and attach them to a release.
+#
+# Publishing a release on GitHub runs this and the packages appear on it a
+# quarter of an hour later; there is nothing to upload by hand and no way for
+# the tag and the binaries to disagree, since the version stamped into them is
+# read off the tag being built.
+#
+# It also runs on demand (workflow_dispatch), which builds everything and
+# uploads nothing — the only way to find out whether the workflow still works
+# without publishing something to find out with.
+#
+# Qt comes from aqtinstall rather than an action, so what runs here is the same
+# command the README tells a person to run, and there is no third-party action
+# in the path of a release build.
+name: Release builds
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to stamp into the packages (no leading v)"
+        default: "0.9.0"
+
+# One release at a time. Two runs uploading assets to the same tag would race
+# over the same filenames.
+concurrency:
+  group: release-${{ github.event.release.tag_name || github.ref }}
+  cancel-in-progress: false
+
+env:
+  QT_VERSION: 6.8.3
+
+jobs:
+  # What the packages call themselves, decided once so the three build jobs
+  # cannot disagree about it. A tag is written v0.9.0 and a version is not, so
+  # the leading v comes off here rather than in three places.
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.pick.outputs.version }}
+    steps:
+      - id: pick
+        run: |
+          if [ -n "${{ github.event.release.tag_name }}" ]; then
+            v="${{ github.event.release.tag_name }}"
+            v="${v#v}"
+          else
+            v="${{ inputs.version }}"
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "building $v"
+
+  # cards.db is generated, not committed — 17 MB that scripts/ingest.py rebuilds
+  # from Scryfall's bulk data. Built once here and handed to the three package
+  # jobs, rather than three times in parallel: it is the same file each time,
+  # and Scryfall does not need three copies of that request per release.
+  cards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python3 scripts/ingest.py
+      - run: ls -la data/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cards-db
+          path: data/cards.db
+          retention-days: 1
+          compression-level: 0   # already about as small as it gets
+
+  linux:
+    needs: [version, cards]
+    # Not ubuntu-latest: an AppImage built against a newer glibc refuses to
+    # start on anything older, and the point of the format is that it runs on
+    # whatever the person downloading it happens to have. Build on the oldest
+    # runner still supported and it works forwards.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Qt and the libraries it links against
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgl1-mesa-dev libxkbcommon-dev libxkbcommon-x11-0 \
+            libvulkan-dev libfuse2 file desktop-file-utils \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 \
+            libxcb-xkb1 libxkbcommon-dev
+          pip install aqtinstall
+          aqt install-qt linux desktop "$QT_VERSION" linux_gcc_64 --outputdir "$HOME/Qt"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: cards-db
+          path: data
+
+      - name: Build
+        run: |
+          export PATH="$HOME/Qt/$QT_VERSION/gcc_64/bin:$PATH"
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DMTG_VERSION="${{ needs.version.outputs.version }}" \
+            -DCMAKE_PREFIX_PATH="$HOME/Qt/$QT_VERSION/gcc_64"
+          cmake --build build -j"$(nproc)"
+          # The AppDir is just the install tree: bin/mtgdeck beside its own
+          # bin/data/cards.db, which is the layout dataDir() looks for first.
+          cmake --install build --prefix AppDir/usr
+
+      - name: AppImage
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          base=https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous
+          curl -sSLo linuxdeploy "$base/linuxdeploy-x86_64.AppImage"
+          curl -sSLo linuxdeploy-plugin-qt \
+            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy linuxdeploy-plugin-qt
+
+          qt="$HOME/Qt/$QT_VERSION/gcc_64"
+
+          # Qt ships five SQL drivers and this app opens one. The plugin bundles
+          # the whole directory and stops on the first driver whose client
+          # library is not installed — libodbc.so.2, and then libpq. Removing
+          # them from the kit is what keeps the AppImage to the driver that is
+          # actually used, rather than to a Postgres client it never calls.
+          find "$qt/plugins/sqldrivers" -name '*.so' ! -name 'libqsqlite.so' -delete
+
+          # Sourced by the AppImage's own AppRun — see the file for why the
+          # platform is chosen there rather than bundled.
+          mkdir -p AppDir/apprun-hooks
+          cp packaging/apprun-hook-xcb.sh AppDir/apprun-hooks/
+
+          export PATH="$qt/bin:$PATH"
+          export QMAKE="$qt/bin/qmake6"
+          # Which Qt gets bundled. linuxdeploy resolves the binary's
+          # dependencies with ldd, and the installed binary's rpath was rewritten
+          # to $ORIGIN by the install step — so without this it bundles whatever
+          # libQt6Core the loader finds first. On a machine with a system Qt that
+          # is the wrong one, and the result is a mismatched bundle: the
+          # libraries are one version, the plugins another, no platform plugin
+          # loads, and the app aborts before it draws anything.
+          export LD_LIBRARY_PATH="$qt/lib"
+          # Where the plugin looks to work out which QML modules to bundle. It
+          # scans imports; qml/ is the whole of this app's QML, and without
+          # this the app starts and then dies on the first missing import.
+          export QML_SOURCES_PATHS="$PWD/qml"
+          # The SQL driver is a plugin, and the app is a database viewer: no
+          # sqldrivers means no cards, with an error only on stderr.
+          export EXTRA_QT_PLUGINS="sqldrivers"
+          # linuxdeploy's bundled strip is older than the libraries on a current
+          # distribution and fails on section types it does not know, which it
+          # reports at the very end as "Failed to execute deferred operations"
+          # rather than as anything to do with stripping. The saving is not
+          # worth the failure mode.
+          export NO_STRIP=1
+          export OUTPUT="CommandCreation-$VERSION-linux-x86_64.AppImage"
+
+          ./linuxdeploy --appdir AppDir --plugin qt --output appimage
+
+          # A bundle whose libraries and plugins disagree still builds happily;
+          # it only fails when someone runs it. Check here instead.
+          bundled=$(strings -a AppDir/usr/lib/libQt6Core.so.6 \
+                    | grep -m1 -oE '6\.[0-9]+\.[0-9]+')
+          echo "bundled Qt: $bundled (expected $QT_VERSION)"
+          [ "$bundled" = "$QT_VERSION" ] || { echo "wrong Qt bundled" >&2; exit 1; }
+          test -f AppDir/usr/plugins/sqldrivers/libqsqlite.so
+          ls -la ./*.AppImage
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: "*.AppImage"
+
+  windows:
+    needs: [version, cards]
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Qt
+        run: |
+          pip install aqtinstall
+          aqt install-qt windows desktop $env:QT_VERSION win64_msvc2022_64 --outputdir C:\Qt
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: cards-db
+          path: data
+
+      - name: Build
+        run: |
+          $qt = "C:\Qt\$env:QT_VERSION\msvc2022_64"
+          # The default generator on this runner is Visual Studio, which is
+          # multi-config: the build type is chosen per build, not at configure
+          # time, so CMAKE_BUILD_TYPE would be quietly ignored and --config is
+          # what actually decides. It also finds the MSVC toolchain itself,
+          # which is why nothing here sets up a compiler environment first.
+          cmake -S . -B build `
+            -DMTG_VERSION="${{ needs.version.outputs.version }}" `
+            -DCMAKE_PREFIX_PATH="$qt"
+          cmake --build build --config Release
+          cmake --install build --config Release --prefix dist
+
+      - name: Bundle Qt beside it
+        run: |
+          $qt = "C:\Qt\$env:QT_VERSION\msvc2022_64"
+          # --qmldir is what makes this find the QML modules the app imports;
+          # without it the .exe ships without Qt Quick and dies on launch.
+          & "$qt\bin\windeployqt.exe" --release --qmldir qml dist\bin\mtgdeck.exe
+          $v = "${{ needs.version.outputs.version }}"
+          Compress-Archive -Path dist\bin\* -DestinationPath "CommandCreation-$v-windows-x64.zip"
+          Get-ChildItem *.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: "*.zip"
+
+  android:
+    needs: [version, cards]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          # Gradle stops at "Unsupported class file major version" on anything
+          # newer, and says nothing about Java when it does.
+          java-version: "21"
+
+      - name: Qt, host and target
+        run: |
+          pip install aqtinstall
+          # Both, and at the same version: moc, rcc and the QML compiler have to
+          # run on this machine, and the Android kit's copies are ARM binaries.
+          aqt install-qt linux desktop "$QT_VERSION" linux_gcc_64 --outputdir "$HOME/Qt"
+          aqt install-qt all_os android "$QT_VERSION" android_arm64_v8a --outputdir "$HOME/Qt"
+
+      - name: The NDK this Qt was built against
+        run: |
+          kit="$HOME/Qt/$QT_VERSION/android_arm64_v8a"
+          # Read it out of the kit rather than pinning a version here: the kit
+          # names the NDK it was configured with, and a mismatched one links
+          # and then crashes on a device without naming either.
+          ndk=$(grep -oP 'android-ndk-r?\K[0-9a-z.]+' \
+                  "$kit/lib/cmake/Qt6/qt.toolchain.cmake" | head -1)
+          echo "kit was built against NDK r$ndk"
+          case "$ndk" in
+            27c|27*) pkg="27.2.12479018" ;;
+            26*)     pkg="26.1.10909125" ;;
+            *) echo "unmapped NDK r$ndk — add it to this case" >&2; exit 1 ;;
+          esac
+          # platforms;android-36 is not optional and not the target SDK: the
+          # compile SDK is the newest platform installed, and androidx.core
+          # refuses to be compiled against anything older.
+          sdkmanager --install "ndk;$pkg" "platforms;android-36" \
+                     "build-tools;36.0.0" "platform-tools" > /dev/null
+          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/$pkg" >> "$GITHUB_ENV"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: cards-db
+          path: data
+
+      # An unsigned release .apk cannot be installed at all, so the choice is
+      # which key signs it. A keystore in the repository's secrets is the right
+      # answer: it stays the same from release to release, which is what lets
+      # someone update the app in place instead of uninstalling it first.
+      #
+      # Without those secrets this still produces something installable — the
+      # debug key Gradle generates — but that key is new on every run, so each
+      # build is a different app as far as Android is concerned.
+      - name: Signing key, if there is one
+        id: keystore
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE" ]; then
+            echo "no ANDROID_KEYSTORE_BASE64 secret — debug-signing this build"
+            echo "signed=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            echo "signed=yes" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        run: |
+          export QT_ANDROID="$HOME/Qt/$QT_VERSION/android_arm64_v8a"
+          export QT_HOST_PATH="$HOME/Qt/$QT_VERSION/gcc_64"
+          if [ "${{ steps.keystore.outputs.signed }}" = yes ]; then
+            # The keystore travels in the environment so the passwords never
+            # reach a command line; --sign is what actually turns signing on,
+            # and the script refuses to finish if it did not take.
+            export QT_ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/release.keystore"
+            export QT_ANDROID_KEYSTORE_ALIAS="${{ secrets.ANDROID_KEY_ALIAS }}"
+            export QT_ANDROID_KEYSTORE_STORE_PASS="${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
+            export QT_ANDROID_KEYSTORE_KEY_PASS="${{ secrets.ANDROID_KEY_PASSWORD }}"
+            ./scripts/build-android.sh --release --sign
+          else
+            # Debug, not release: an unsigned release .apk cannot be installed
+            # at all, and a debug one is signed with a key Gradle makes up.
+            ./scripts/build-android.sh
+          fi
+
+      - name: Name it after the release
+        run: |
+          # A signed build leaves both the unsigned package and the signed
+          # one in the same directory, and only the signed one can be
+          # installed. Prefer it; fall back to whatever single .apk a
+          # debug-signed build produced.
+          apk=$(find build-android -name '*-signed.apk' | head -1)
+          [ -n "$apk" ] || apk=$(find build-android -name '*.apk' | head -1)
+          [ -n "$apk" ] || { echo "no .apk was produced" >&2; exit 1; }
+          cp "$apk" "CommandCreation-${{ needs.version.outputs.version }}-android-arm64.apk"
+          ls -la ./*.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: "*.apk"
+
+  # Only when there is a release to attach them to. A workflow_dispatch run
+  # builds all three and stops here, which is what makes it safe to use as a
+  # check on a working day.
+  publish:
+    needs: [linux, windows, android]
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - run: ls -la dist
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        # --clobber so re-running a failed release replaces its assets rather
+        # than failing on the ones that did upload the first time.
+        run: gh release upload "${{ github.event.release.tag_name }}" dist/* --clobber
