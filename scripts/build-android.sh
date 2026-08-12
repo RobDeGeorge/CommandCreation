@@ -67,6 +67,15 @@ if [[ "$SIGN" == yes ]]; then
     SIGN_ARGS=(-DQT_ANDROID_SIGN_APK=ON)
 fi
 
+# What the package calls itself. CMakeLists.txt has a default, and a release
+# build overrides it from the tag being built — see .github/workflows/
+# release.yml. Passed through here rather than left to the caller's cmake line,
+# because the caller does not have one: this script owns the configure step.
+VERSION_ARGS=()
+if [[ -n "${MTG_VERSION:-}" ]]; then
+    VERSION_ARGS=(-DMTG_VERSION="$MTG_VERSION")
+fi
+
 need() {
     local var=$1 what=$2
     [[ -n "${!var:-}" ]] || { echo "$var is not set — $what" >&2; exit 1; }
@@ -97,7 +106,7 @@ fi
     -DQT_HOST_PATH="$QT_HOST_PATH" \
     -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" \
     -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT" \
-    "${SIGN_ARGS[@]}"
+    "${VERSION_ARGS[@]}" "${SIGN_ARGS[@]}"
 
 # `apk` is the target qt_add_executable() generates for an Android build: it
 # builds the library, runs androiddeployqt over it, and drives Gradle. Building

@@ -328,6 +328,11 @@ jobs:
         run: |
           export QT_ANDROID="$HOME/Qt/$QT_VERSION/android_arm64_v8a"
           export QT_HOST_PATH="$HOME/Qt/$QT_VERSION/gcc_64"
+          # What the package calls itself. The other two jobs put this on their
+          # cmake line; here the script owns the configure step, so it reads it
+          # from the environment. Without it the .apk carries the default from
+          # CMakeLists.txt and quietly disagrees with the tag it shipped under.
+          export MTG_VERSION="${{ needs.version.outputs.version }}"
           # The keystore travels in the environment so the passwords never
           # reach a command line; --sign is what actually turns signing on,
           # and the script refuses to finish if it did not take.
