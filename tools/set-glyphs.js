@@ -56,6 +56,17 @@ for (const dir of [APP_ASSETS, APP_ASSETS_HOT]) {
   }
 }
 
+// Every sprite is written as "set-<code>.png" rather than "<code>.png".
+//
+// The prefix is not decoration: one of these sets is Conflux, whose code is
+// CON, and CON is a reserved device name on Windows — as are PRN, AUX, NUL,
+// COM1-9 and LPT1-9, with any extension you like. Git cannot check such a file
+// out there, so a repository containing "con.png" cannot be cloned on Windows
+// at all, which is a thing you discover when someone tries.
+//
+// A prefix on all of them beats a list of the reserved ones: there is no rule
+// to remember, no way for a future set code to slip through, and the names stay
+// uniform. Main.qml builds the same string on the other side.
 const names = Object.keys(input.glyphs).sort();
 for (const name of names) {
   const rows = input.glyphs[name];
@@ -79,12 +90,12 @@ for (const name of names) {
 
   // the app draws these at 1:1, so export at 1:1
   const cell = S.frameToRGBA(sprite, 0, 1);
-  fs.writeFileSync(path.join(APP_ASSETS, name + '.png'),
+  fs.writeFileSync(path.join(APP_ASSETS, 'set-' + name + '.png'),
                    encodePNG(cell.width, cell.height, cell.rgba));
 
   const hot = S.frameToRGBA(
     Object.assign({}, sprite, { palette: HOT_PALETTE }), 0, 1);
-  fs.writeFileSync(path.join(APP_ASSETS_HOT, name + '.png'),
+  fs.writeFileSync(path.join(APP_ASSETS_HOT, 'set-' + name + '.png'),
                    encodePNG(hot.width, hot.height, hot.rgba));
 }
 

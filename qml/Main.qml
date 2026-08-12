@@ -976,7 +976,7 @@ ApplicationWindow {
                                                 // overlay's dark plate, where the
                                                 // tiles' black symbol would vanish
                                                 glyph: g === "" ? ""
-                                                     : "assets/sets-hot/" + g + ".png"
+                                                     : "assets/sets-hot/set-" + g + ".png"
                                             })
                                         }
                                         return rows
@@ -1495,7 +1495,7 @@ ApplicationWindow {
                                     anchors.centerIn: parent
                                     width: 16; height: 16
                                     source: setSymbol.glyphName === "" ? ""
-                                          : "assets/sets/" + setSymbol.glyphName + ".png"
+                                          : "assets/sets/set-" + setSymbol.glyphName + ".png"
                                     smooth: false
                                     fillMode: Image.Stretch
                                 }
