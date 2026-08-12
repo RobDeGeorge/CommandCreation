@@ -30,7 +30,11 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  QT_VERSION: 6.8.3
+  # 6.9 is the floor for Android, not 6.8: QT_ANDROID_APP_NAME arrived in 6.9,
+  # and without it the .apk is labelled after the CMake target — an app called
+  # "mtgdeck" on the home screen. Everything else here works either side of
+  # that, so one version serves all three platforms.
+  QT_VERSION: 6.9.3
 
 jobs:
   # What the packages call themselves, decided once so the three build jobs

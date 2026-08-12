@@ -192,10 +192,12 @@ Five things that will cost you an afternoon if you guess at them:
   `androidx.core:core` wants API 36.
 - **Gradle is fussy about the JDK.** Too new and it stops at "Unsupported class
   file major version" without mentioning Java. 17 or 21.
-- **Qt 6.8 is the floor here**, above this project's usual 6.5. The
-  `QT_ANDROID_*` properties in `CMakeLists.txt` are what set the package name
-  and SDK levels, and an older Qt ignores them in silence — leaving an app
-  called `mtgdeck` under `org.qtproject.example`, which cannot be published. On
+- **Qt 6.9 is the floor here**, above this project's usual 6.5. The
+  `QT_ANDROID_*` properties in `CMakeLists.txt` are what set the package name,
+  the app's name and the SDK levels, and an older Qt ignores the ones it does
+  not have in silence: 6.7 and earlier leave the package as
+  `org.qtproject.example.mtgdeck`, which cannot be published, and 6.8 gets that
+  right but not the label, so the icon on the home screen reads "mtgdeck". On
   an older kit you also have to add `<uses-permission
   android:name="android.permission.INTERNET"/>` to the manifest by hand, or
   every card image fails and the app merely looks broken.

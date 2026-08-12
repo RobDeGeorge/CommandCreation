@@ -14,8 +14,16 @@ set(MTG_VERSION "0.9.0" CACHE STRING "Version these packages carry")
 
 project(mtgdeck VERSION ${MTG_VERSION} LANGUAGES CXX)
 
+# A version may be given with two components — v0.9 is a perfectly ordinary tag
+# — and CMake leaves PROJECT_VERSION_PATCH empty for those rather than zero,
+# which turns the arithmetic below into a syntax error.
+set(MTG_PATCH "${PROJECT_VERSION_PATCH}")
+if(MTG_PATCH STREQUAL "")
+    set(MTG_PATCH 0)
+endif()
+
 math(EXPR MTG_VERSION_CODE "${PROJECT_VERSION_MAJOR} * 10000 \
-     + ${PROJECT_VERSION_MINOR} * 100 + ${PROJECT_VERSION_PATCH}")
+     + ${PROJECT_VERSION_MINOR} * 100 + ${MTG_PATCH}")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -154,16 +162,19 @@ endif()
 # Configure this build with scripts/build-android.sh, which is mostly a wrapper
 # around the four paths androiddeployqt needs.
 #
-# Qt 6.8 is the floor here rather than the 6.5 above: the QT_ANDROID_* target
+# Qt 6.9 is the floor here rather than the 6.5 above: the QT_ANDROID_* target
 # properties below are what name the package and set its SDK levels, and an
-# older Qt ignores them silently — leaving an app called "mtgdeck" under
-# org.qtproject.example, which is a package name that cannot be published.
+# older Qt ignores them in silence — 6.7 and earlier leave the package called
+# org.qtproject.example.mtgdeck, which cannot be published, and 6.8 gets the
+# package name right but not QT_ANDROID_APP_NAME, which arrived in 6.9. That
+# one is the quiet failure: the build succeeds, the .apk installs, and the icon
+# on the home screen is labelled after the CMake target.
 if(ANDROID)
-    if(Qt6_VERSION VERSION_LESS 6.8)
+    if(Qt6_VERSION VERSION_LESS 6.9)
         message(WARNING
-            "Qt ${Qt6_VERSION} for Android: the QT_ANDROID_* properties below "
-            "arrived in 6.8 and older versions ignore them, so this will build "
-            "as org.qtproject.example.mtgdeck. Upgrade the Android kit.")
+            "Qt ${Qt6_VERSION} for Android: some of the QT_ANDROID_* properties "
+            "below arrived in 6.9 and this kit will ignore those in silence — "
+            "at best the app is labelled \"mtgdeck\" on the device. Upgrade it.")
     endif()
 
     # Everything under this directory is merged into the package by
