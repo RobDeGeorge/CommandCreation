@@ -5,7 +5,9 @@ import "Retro.js" as Retro
 // One-field prompt used for naming, renaming and copying lists.
 RetroDialog {
     id: dialog
-    width: 380
+    // never wider than the screen it is centred on — on a phone that is the
+    // binding that does the work, on a desktop the 380 is
+    width: Math.min(380, window.width - 24)
 
     property string label: ""
     property string placeholder: ""

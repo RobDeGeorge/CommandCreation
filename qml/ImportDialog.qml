@@ -13,7 +13,9 @@ import "Retro.js" as Retro
 RetroDialog {
     id: dialog
 
-    width: Math.min(620, window.width * 0.75)
+    // three quarters of a wide window; on a narrow one three quarters is too
+    // little to paste a deck list into, so it takes the width less a margin
+    width: Math.min(620, Math.max(window.width * 0.75, 320), window.width - 24)
     height: Math.min(680, window.height * 0.85)
     title: "Import deck list"
 

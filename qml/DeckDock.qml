@@ -10,6 +10,13 @@ Rectangle {
     id: dock
     color: "#c8c8cc"
 
+    // Set when the dock is being shown as a full-width sheet on a narrow
+    // screen — see window.narrow. What it really means here is "there is no
+    // pointer": a screen too narrow for three columns is a screen you are
+    // touching, and nothing that only appears on hover can be reached by a
+    // finger. The controls it gates are shown outright instead.
+    property bool touch: false
+
     // asked for by a row's context menu; Main.qml owns the dialogs
     signal renameRequested(int listId, string currentName)
     signal duplicateRequested(int listId, string currentName)
@@ -683,14 +690,14 @@ Rectangle {
                         PixelButton {
                             sprite: "mtg-icon-minus"
                             pixelScale: 1
-                            visible: cardHover.hovered
+                            visible: cardHover.hovered || dock.touch
                             onClicked: deckStore.setQty(
                                 deckStore.activeId, cardId, qty - 1)
                         }
                         PixelButton {
                             sprite: "mtg-icon-plus"
                             pixelScale: 1
-                            visible: cardHover.hovered
+                            visible: cardHover.hovered || dock.touch
                             onClicked: deckStore.addCard(deckStore.activeId, cardId)
                         }
                         // takes the whole entry out in one go. The minus above
@@ -700,7 +707,7 @@ Rectangle {
                         PixelButton {
                             sprite: "mtg-icon-close"
                             pixelScale: 1
-                            visible: cardHover.hovered
+                            visible: cardHover.hovered || dock.touch
                             Layout.leftMargin: 5
                             tooltip: qty > 1 ? "Remove all " + qty + " copies"
                                              : "Remove from list"
@@ -713,6 +720,14 @@ Rectangle {
                         acceptedButtons: Qt.LeftButton
                         onTapped: dock.cardActivated(cardId, imageNormal, name,
                                                      rarity, imageBack)
+                        // The touch stand-in for the right-click below: a hold
+                        // on the row opens the same menu. On the same handler
+                        // as the tap rather than a second one, because that is
+                        // what makes the hold *replace* the tap instead of
+                        // firing alongside it — see the gallery tiles, which do
+                        // the same thing for the same reason.
+                        onLongPressed: dock.deckCardMenuRequested(
+                            cardId, name, label)
                     }
                     TapHandler {
                         acceptedButtons: Qt.RightButton

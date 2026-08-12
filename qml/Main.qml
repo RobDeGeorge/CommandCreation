@@ -319,7 +319,10 @@ ApplicationWindow {
         // the card region this popover edits; drives its vertical position
         property Item region: null
 
-        width: 250
+        // Beside the card it is 250 wide, which is what its two spinners and a
+        // dash need. Over the card it takes the card's width less a margin, so
+        // it can never hang off the screen edge with half a control on it.
+        width: window.narrow ? Math.min(card.width - 16, 320) : 250
         padding: 12
         modal: false
         focus: true
@@ -332,8 +335,25 @@ ApplicationWindow {
         // nothing when nothing was typed — commitText is a no-op then.
         onClosed: window.commitText()
 
-        x: card.width + 10
-        y: region ? Math.max(0, region.y + region.height / 2 - height / 2) : 0
+        // Wide, beside the card, centred on the region it belongs to.
+        //
+        // Narrow, there is no beside — the card is the width of the screen. So
+        // it drops *under* its region instead, centred horizontally on the
+        // card: directly below is the one place that can't cover the region you
+        // are editing, which is the whole reason these never sat over the card
+        // in the first place. A region near the bottom of the card would put it
+        // off the end, so it flips above that region instead, and the clamp
+        // catches whatever is left.
+        x: window.narrow ? (card.width - width) / 2 : card.width + 10
+        y: {
+            if (!region) return 0
+            if (!window.narrow)
+                return Math.max(0, region.y + region.height / 2 - height / 2)
+            var below = region.y + region.height + 8
+            var placed = below + height <= card.height ? below
+                                                       : region.y - height - 8
+            return Math.max(0, Math.min(card.height - height, placed))
+        }
     }
 
     // a heading inside an overlay
@@ -369,13 +389,17 @@ ApplicationWindow {
             id: panelToggle
             sprite: "mtg-icon-search"
             pixelScale: 2
-            checkable: true
+            // not `checkable`: a checkable button assigns its own `checked` on
+            // click, which throws away the binding below. The window owns
+            // whether the form is open — in the narrow layout opening one side
+            // shuts the other, so this button has to be able to come back up
+            // without having been clicked. See PixelButton.
             checked: window.panelOpen
             tooltip: "Show or hide the search form"
             anchors.left: parent.left
             anchors.leftMargin: 6
             anchors.verticalCenter: parent.verticalCenter
-            onClicked: window.panelOpen = checked
+            onClicked: window.openSide("panel", !window.panelOpen)
         }
 
         Row {
@@ -383,27 +407,47 @@ ApplicationWindow {
             // edge: the count and the order both describe the grid, so they
             // start where it starts and follow it when the panel shuts — up to
             // the switch above, which the gallery is allowed to slide under but
-            // this is not
+            // this is not.
+            //
+            // In the narrow layout the panel is a sheet laid over the gallery
+            // rather than a column beside it, so there is no first column to be
+            // flush with and this sits straight after the switch.
             anchors.left: parent.left
-            anchors.leftMargin: Math.max(
-                filterPanel.width + grid.anchors.leftMargin,
-                panelToggle.x + panelToggle.width + 10)
+            anchors.leftMargin: window.narrow
+                ? panelToggle.x + panelToggle.width + 8
+                : Math.max(filterPanel.width + grid.anchors.leftMargin,
+                           panelToggle.x + panelToggle.width + 10)
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 8
+            spacing: window.narrow ? 5 : 8
 
             // the one number you watch while you are narrowing things down, so
             // it keeps the larger size it had in the panel
             Label {
-                text: cardModel.count + " cards"
+                // The number is the thing; the word is what tells you what it
+                // counts. On a narrow bar the word goes and the number stays —
+                // by then it is the only number up here, and the sort dropdown
+                // beside it has already said these are cards.
+                text: window.narrow ? cardModel.count
+                                    : cardModel.count + " cards"
                 font.pixelSize: Retro.title
                 color: "#33333a"
                 anchors.verticalCenter: parent.verticalCenter
             }
 
-            ToolSeparator { height: 24; anchors.verticalCenter: parent.verticalCenter }
+            // The word "Sort" and the rule before it are what the dropdown
+            // can't say for itself on a wide bar. On a narrow one they are the
+            // first things to go: a dropdown reading "Name" beside a card count
+            // is already unambiguous, and the room they cost is room the
+            // dropdown itself needs.
+            ToolSeparator {
+                height: 24
+                visible: !window.narrow
+                anchors.verticalCenter: parent.verticalCenter
+            }
 
             Label {
                 text: "Sort"
+                visible: !window.narrow
                 font.pixelSize: Retro.body
                 color: "#33333a"
                 anchors.verticalCenter: parent.verticalCenter
@@ -412,7 +456,7 @@ ApplicationWindow {
                 id: sortOrder
                 // wide enough for "EDHREC rank", the longest of them; it can't
                 // fill the bar the way it filled the panel's width
-                width: 150
+                width: window.narrow ? 112 : 150
                 height: 32
                 anchors.verticalCenter: parent.verticalCenter
                 model: ["Name", "Mana value", "EDHREC rank",
@@ -440,14 +484,14 @@ ApplicationWindow {
         PixelButton {
             sprite: "mtg-icon-panel"
             pixelScale: 2
-            checkable: true
+            // as the search switch: bound, not self-toggling
             checked: window.dockOpen
             tooltip: "Show or hide the deck workspace"
             // right-hand end of the bar, over the side it opens and shuts
             anchors.right: parent.right
             anchors.rightMargin: 6
             anchors.verticalCenter: parent.verticalCenter
-            onClicked: window.dockOpen = checked
+            onClicked: window.openSide("dock", !window.dockOpen)
         }
 
         Rectangle {
@@ -464,12 +508,17 @@ ApplicationWindow {
         Rectangle {
             id: filterPanel
             // shut the same way the deck workspace shuts, and at the same
-            // speed, so the two sides of the gallery behave as one pair
-            width: window.panelOpen ? 340 : 0
+            // speed, so the two sides of the gallery behave as one pair.
+            // Narrow, it takes the whole width and lies over the gallery
+            // instead of beside it — see window.narrow.
+            width: window.panelOpen ? (window.narrow ? parent.width : 340) : 0
             visible: width > 0
             anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
             color: "#cfcfd3"
             clip: true
+            // above the gallery only when it is covering it; side by side the
+            // stacking order never comes up
+            z: window.narrow ? 20 : 0
             Behavior on width { NumberAnimation { duration: 140 } }
 
             Flickable {
@@ -1323,16 +1372,27 @@ ApplicationWindow {
         // ---- card grid --------------------------------------------------
         GridView {
             id: grid
+            // Narrow, the two flanking panels are sheets over the gallery
+            // rather than columns beside it, so the gallery keeps the whole
+            // width and simply sits underneath whichever one is open.
             anchors {
-                left: filterPanel.right; right: deckDock.left
+                left: window.narrow ? parent.left : filterPanel.right
+                right: window.narrow ? parent.right : deckDock.left
                 top: parent.top; bottom: parent.bottom
-                leftMargin: 12; rightMargin: 12; topMargin: 12
+                leftMargin: window.narrow ? 4 : 12
+                rightMargin: window.narrow ? 4 : 12
+                topMargin: window.narrow ? 4 : 12
             }
             model: cardModel
             cacheBuffer: 800
             clip: true
 
-            property int columns: Math.max(1, Math.floor(width / 250))
+            // A tile has to be wide enough to read the set line under the art.
+            // 250 is comfortable; 175 is the floor, and it is what puts two
+            // cards across a phone rather than one enormous one — a one-column
+            // gallery is a list you scroll forever, not a gallery you scan.
+            property int columns: Math.max(
+                1, Math.floor(width / (window.narrow ? 175 : 250)))
             cellWidth: width / columns
             cellHeight: (cellWidth - 16) * 1.395 + 44   // card art + info row
 
@@ -1496,6 +1556,17 @@ ApplicationWindow {
                             }
                             window.showCard(imageNormal, name, rarity, imageBack)
                         }
+                        // A touch screen has no right button. Holding a tile is
+                        // the gesture that stands in for one everywhere else,
+                        // so it opens the same menu — and it costs the mouse
+                        // nothing, since holding the left button over a tile
+                        // did nothing before.
+                        onPressAndHold: (mouse) => {
+                            if (mouse.button !== Qt.LeftButton) return
+                            cardMenu.openFor(cardId, name,
+                                             canBeCommander === 1, false,
+                                             imageNormal, rarity, imageBack)
+                        }
                         // double-click drops the card straight into the open
                         // list — the fast path once you've picked a list
                         onDoubleClicked: (mouse) => {
@@ -1522,9 +1593,13 @@ ApplicationWindow {
         // ---- deck workspace ---------------------------------------------
         DeckDock {
             id: deckDock
-            width: window.dockOpen ? 380 : 0
+            // as filterPanel: a column when there is room for one, a full-width
+            // sheet over the gallery when there is not
+            width: window.dockOpen ? (window.narrow ? parent.width : 380) : 0
             visible: width > 0
             anchors { right: parent.right; top: parent.top; bottom: parent.bottom }
+            z: window.narrow ? 20 : 0
+            touch: window.narrow
             Behavior on width { NumberAnimation { duration: 140 } }
 
             // the last argument asks the dialog to offer list-or-deck
@@ -1560,6 +1635,38 @@ ApplicationWindow {
     // in the top bar, since a shut side has nowhere to keep its own
     property bool panelOpen: true
     property bool dockOpen: true
+
+    // ---- narrow layout ----------------------------------------------------
+    // The three columns — the form, the gallery, the deck — only stand side by
+    // side on a wide screen. A phone held upright is about 390pt across, which
+    // is narrower than the form alone. So under this width the two flanking
+    // columns stop being columns: each becomes a full-width sheet over the
+    // gallery, and only one is open at a time. Nothing is removed and nothing
+    // is given a second implementation — the same panel and the same dock, laid
+    // over instead of beside.
+    //
+    // 820 is the width below which the gallery would be left under 100px
+    // between a 340 form and a 380 deck, i.e. narrower than one card tile. That
+    // is the real threshold: not a device, but the point where the middle
+    // column stops being able to show anything.
+    readonly property bool narrow: width < 820
+    // Coming into the narrow layout, both sheets shut — you land on the
+    // gallery. Going back out, both columns return, which is the wide layout's
+    // own resting state.
+    onNarrowChanged: {
+        panelOpen = !narrow
+        dockOpen = !narrow
+    }
+    // opening one sheet shuts the other; side by side there is nothing to shut
+    function openSide(which, on) {
+        if (which === "panel") {
+            panelOpen = on
+            if (on && narrow) dockOpen = false
+        } else {
+            dockOpen = on
+            if (on && narrow) panelOpen = false
+        }
+    }
     // ids in the open list, so grid tiles can tick themselves
     property var activeMembers: deckStore.activeCardIds
 
@@ -1612,7 +1719,7 @@ ApplicationWindow {
         // plate narrower than the two buttons, which are anchored to the right
         // edge and so hung off the left of it. Every other dialog here states a
         // width; this was the only one that didn't.
-        width: 380
+        width: Math.min(380, window.width - 24)
         title: "Delete list"
         property int listId: 0
         property string listName: ""
@@ -1648,7 +1755,7 @@ ApplicationWindow {
 
     RetroDialog {
         id: exportDialog
-        width: Math.min(560, window.width * 0.7)
+        width: Math.min(560, Math.max(window.width * 0.7, 320), window.width - 24)
         height: Math.min(600, window.height * 0.8)
         title: "Export — " + deckStore.activeName
 
@@ -1874,6 +1981,12 @@ ApplicationWindow {
 
     Component.onCompleted: {
         window.syncPreviewFace()
+        // onNarrowChanged never fires for a window that *starts* narrow, so
+        // the opening state is settled here rather than only on a resize
+        if (window.narrow) {
+            window.panelOpen = false
+            window.dockOpen = false
+        }
         // nothing has been drawn yet, so the first layout is placed, not moved
         window.previewFrame = window.pendingFrame
         window.previewRarity = window.pendingRarity
