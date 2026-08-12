@@ -5,6 +5,7 @@
 #include <QDebug>
 #include <QDir>
 #include <QEventLoop>
+#include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -16,6 +17,7 @@
 #include <QSet>
 #include <QSqlError>
 #include <QSqlRecord>
+#include <QStandardPaths>
 #include <QTimer>
 #include <QUuid>
 
@@ -71,11 +73,14 @@ QString backImageUrl(const QString &table = QStringLiteral("cards"))
         .arg(table, imageUrl(QStringLiteral("normal"), QStringLiteral("back"), table));
 }
 
-// Where the databases live. Three cases, tried in this order:
+// Where the databases live. Four cases, tried in this order:
 //
 //   WebAssembly  a fixed path in Emscripten's virtual filesystem, which
 //                CMakeLists.txt preloads data/ into. There is no host
 //                filesystem underneath to fall back to.
+//   Android      the app's own private directory, which is the only place a
+//                packaged app may write. cards.db travels inside the .apk and
+//                is unpacked to here on first run — see unpackCards().
 //   installed    data/ beside the binary — the layout `cmake --install` lays
 //                down. This is what lets a copy of the build run on a machine
 //                that never had the sources.
@@ -89,6 +94,10 @@ QString dataDir()
 {
 #if defined(Q_OS_WASM)
     return QStringLiteral("/data");
+#elif defined(Q_OS_ANDROID)
+    // AppDataLocation, not AppLocalDataLocation: the same directory on Android,
+    // and the one Qt documents as private to the app. It is created for us.
+    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
 #else
     const QString beside =
         QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("data"));
@@ -116,6 +125,62 @@ QString decksDir()
     return dataDir();
 #endif
 }
+
+// Android only: put cards.db somewhere it can actually be opened.
+//
+// Everything inside an .apk is read-only, and SQLite could not open it there
+// even if it weren't: Qt serves packaged assets through its own file engine
+// under "assets:/", which has no operating-system file descriptor to hand to
+// sqlite3. So the shipped database is unpacked into the app's private
+// directory, once, and every later run opens that copy.
+//
+// It has to be a copy rather than a read-only mapping for a second reason
+// anyway — the app writes to cards.db. ensureCardColumns() can ALTER it and
+// ensureSetIcons() creates and fills a table in it.
+//
+// Unpacked again whenever the asset's size differs from the size recorded in
+// the stamp file beside the copy. The copy's own size is not comparable: those
+// two writes move it the first time the app runs, so a copy that is perfectly
+// up to date no longer matches the asset it came from. The stamp is the thing
+// that stays comparable, and a re-ingested 17 MB database landing on exactly
+// its predecessor's byte count is not a thing that happens.
+//
+// Returns false only if the unpacking failed, which leaves Db::open() to report
+// a missing cards.db — the same message a desktop build gives, and the same
+// thing has gone wrong: there is no card database to read.
+#if defined(Q_OS_ANDROID)
+bool unpackCards()
+{
+    const QString target = QDir(dataDir()).filePath(QStringLiteral("cards.db"));
+    const QString stampPath = target + QStringLiteral(".packaged");
+    QFile asset(QStringLiteral("assets:/data/cards.db"));
+    if (!asset.exists()) {
+        qWarning("cards.db is not in the package — see the Android section of the README");
+        return false;
+    }
+
+    const QByteArray size = QByteArray::number(asset.size());
+    QFile stamp(stampPath);
+    if (QFileInfo::exists(target) && stamp.open(QIODevice::ReadOnly)
+        && stamp.readAll().trimmed() == size)
+        return true;
+    stamp.close();
+
+    QDir().mkpath(dataDir());
+    // QFile::copy will not write over an existing file, and the file that is
+    // there is the stale one this is replacing.
+    QFile::remove(target);
+    if (!asset.copy(target)) {
+        qWarning("could not unpack cards.db: %s", qPrintable(asset.errorString()));
+        return false;
+    }
+    // The stamp is written last, so an unpacking that dies halfway is retried
+    // on the next run rather than remembered as done.
+    if (stamp.open(QIODevice::WriteOnly))
+        stamp.write(size);
+    return true;
+}
+#endif
 
 // The name a list answers to once it leaves this machine.
 //
@@ -250,12 +315,23 @@ QString Db::cardColumns()
 
 bool Db::open(QString *error)
 {
+#if defined(Q_OS_ANDROID)
+    // Before anything looks for the file: on Android it does not exist yet the
+    // first time the app is run, because it is still inside the package.
+    unpackCards();
+#endif
     const QString cards = QDir(dataDir()).filePath(QStringLiteral("cards.db"));
     const QString decks = QDir(decksDir()).filePath(QStringLiteral("decks.db"));
 
     if (!QFileInfo::exists(cards)) {
         if (error)
+#if defined(Q_OS_ANDROID)
+            // Not something the person holding the phone can fix: the database
+            // is packaged, so its absence is a build that shipped without it.
+            *error = QStringLiteral("cards.db could not be unpacked from the app package");
+#else
             *error = QStringLiteral("data/cards.db not found — run: python3 scripts/ingest.py");
+#endif
         return false;
     }
 

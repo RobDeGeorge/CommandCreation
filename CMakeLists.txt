@@ -69,8 +69,14 @@ target_compile_definitions(mtgdeck PRIVATE
 # cards.db only. decks.db holds whoever-built-this's own lists, and shipping it
 # would hand them to everyone who downloads the app; SQLite's ATTACH creates the
 # file on first run, and ensureDeckTables() fills in the schema.
-install(TARGETS mtgdeck RUNTIME DESTINATION bin)
-install(FILES data/cards.db DESTINATION bin/data OPTIONAL)
+#
+# Not on Android, where there is no such thing as a directory to install into
+# and the target is not an executable at all — androiddeployqt packages the
+# library into an .apk, and cards.db travels with it as an asset (below).
+if(NOT ANDROID)
+    install(TARGETS mtgdeck RUNTIME DESTINATION bin)
+    install(FILES data/cards.db DESTINATION bin/data OPTIONAL)
+endif()
 
 # The browser has no filesystem to install into. cards.db is packaged into
 # Emscripten's virtual one at /data instead, which is the first case dataDir()
@@ -107,4 +113,69 @@ if(EMSCRIPTEN)
     # comes up, the cards are all there, and only something small is missing.
     set_target_properties(mtgdeck PROPERTIES
         LINK_DEPENDS "${MTG_PRE_JS};${MTG_CARDS_DB}")
+endif()
+
+# A phone has no filesystem to install into either, and no source tree to fall
+# back on. cards.db rides inside the .apk as an Android asset and is unpacked to
+# the app's private directory on first run — see unpackCards() in src/Db.cpp for
+# why it cannot simply be read where it lands.
+#
+# Configure this build with scripts/build-android.sh, which is mostly a wrapper
+# around the four paths androiddeployqt needs.
+#
+# Qt 6.8 is the floor here rather than the 6.5 above: the QT_ANDROID_* target
+# properties below are what name the package and set its SDK levels, and an
+# older Qt ignores them silently — leaving an app called "mtgdeck" under
+# org.qtproject.example, which is a package name that cannot be published.
+if(ANDROID)
+    if(Qt6_VERSION VERSION_LESS 6.8)
+        message(WARNING
+            "Qt ${Qt6_VERSION} for Android: the QT_ANDROID_* properties below "
+            "arrived in 6.8 and older versions ignore them, so this will build "
+            "as org.qtproject.example.mtgdeck. Upgrade the Android kit.")
+    endif()
+
+    # Everything under this directory is merged into the package by
+    # androiddeployqt, so assets/ here is what "assets:/" reads at runtime.
+    # It is generated into the build tree rather than kept in the source tree,
+    # because the only thing in it is a 17 MB database that git does not track.
+    set(MTG_ANDROID_PACKAGE "${CMAKE_CURRENT_BINARY_DIR}/android-package")
+    set(MTG_CARDS_DB "${CMAKE_CURRENT_SOURCE_DIR}/data/cards.db")
+    if(NOT EXISTS "${MTG_CARDS_DB}")
+        message(FATAL_ERROR
+            "data/cards.db is missing, and on Android it has to be packaged at "
+            "build time — there is nowhere for the app to find it later. "
+            "Build it first: python3 scripts/ingest.py")
+    endif()
+
+    # POST_BUILD rather than configure time: androiddeployqt runs after the
+    # library is linked, and copy_if_different means re-running ingest.py is
+    # picked up by the next build without anyone having to remember it.
+    add_custom_command(TARGET mtgdeck POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${MTG_CARDS_DB}" "${MTG_ANDROID_PACKAGE}/assets/data/cards.db"
+        COMMENT "Packaging cards.db into the Android assets")
+
+    set_target_properties(mtgdeck PROPERTIES
+        QT_ANDROID_PACKAGE_SOURCE_DIR "${MTG_ANDROID_PACKAGE}"
+        QT_ANDROID_APP_NAME "Command Creation"
+        QT_ANDROID_PACKAGE_NAME "com.commandcreation.builder"
+        QT_ANDROID_VERSION_NAME "0.1"
+        QT_ANDROID_VERSION_CODE 1
+        # 23 is the floor Qt 6 itself sets. 36 is a target, not a requirement:
+        # it only says which behaviour changes the app opts into, and it is
+        # separate again from the SDK the package is *compiled* against —
+        # androiddeployqt takes that from the newest platform installed, so an
+        # SDK without platforms;android-36 fails in Gradle on the AndroidX
+        # dependency rather than here.
+        QT_ANDROID_MIN_SDK_VERSION 23
+        QT_ANDROID_TARGET_SDK_VERSION 36)
+
+    # Without this the card images never load and the app looks broken rather
+    # than offline — every picture comes from Scryfall's CDN. Guarded because
+    # the command is 6.8-and-later; on an older kit, add the <uses-permission>
+    # line to the manifest by hand (see the README).
+    if(COMMAND qt_add_android_permission)
+        qt_add_android_permission(mtgdeck NAME android.permission.INTERNET)
+    endif()
 endif()

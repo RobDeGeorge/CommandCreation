@@ -1657,6 +1657,27 @@ ApplicationWindow {
         panelOpen = !narrow
         dockOpen = !narrow
     }
+    // Android's back button arrives as a request to close the window, and
+    // quitting the app is almost never what it means. It means "out of
+    // whatever I am in": the enlarged card, then the sheet over the gallery.
+    // Only from the bare gallery, with nothing left to back out of, does it
+    // close the app — which is the convention every Android app follows.
+    //
+    // Android only, and deliberately so. The same signal on the desktop is the
+    // window's close button, and a close button that shuts a popup instead of
+    // the window is a close button that appears not to work.
+    onClosing: (close) => {
+        if (Qt.platform.os !== "android") return
+        if (detailPopup.opened) {
+            detailPopup.close()
+            close.accepted = false
+        } else if (window.narrow && (panelOpen || dockOpen)) {
+            panelOpen = false
+            dockOpen = false
+            close.accepted = false
+        }
+    }
+
     // opening one sheet shuts the other; side by side there is nothing to shut
     function openSide(which, on) {
         if (which === "panel") {

@@ -143,6 +143,88 @@ that host must do:
   and buffers all 35 MB before it starts
 - **compress**: ~52 MB raw against ~17 MB gzipped
 
+## The Android build
+
+A third build directory, and again nothing forks. `qml/` is shared whole — the
+layout already collapses to one column on a narrow screen (see **Layout**
+below), which is the same code path a 900-pixel-wide desktop window takes. The
+C++ differs in one place, `dataDir()` and `unpackCards()` in `src/Db.cpp`.
+
+```bash
+# once. The versions are the ones this was built with, and three of the four
+# are not free choices — see below.
+aqt install-qt all_os android 6.11.1 android_arm64_v8a --outputdir ~/Qt
+sdkmanager "platform-tools" "platforms;android-36" \
+           "build-tools;36.0.0" "ndk;27.2.12479018"
+
+# each build
+export QT_ANDROID=~/Qt/6.11.1/android_arm64_v8a
+export QT_HOST_PATH=/usr                             # the system Qt, and it
+                                                     # is 6.11.1 too — see below
+export ANDROID_SDK_ROOT=~/Android/Sdk
+export ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/27.2.12479018
+export JAVA_HOME=/usr/lib/jvm/java-21-openjdk        # not a newer one — see below
+
+./scripts/build-android.sh --install     # or without --install for just the .apk
+```
+
+Out comes a ~32 MB `.apk`: 8 MB of compressed `cards.db`, and the rest Qt.
+
+Five things that will cost you an afternoon if you guess at them:
+
+- **`QT_HOST_PATH` must be a Qt of exactly the same version** as the Android
+  kit — `moc`, `rcc` and the QML compiler have to run on this machine, and an
+  Android kit's copies cannot. It does not have to be a *second* download,
+  though: the Android kit above is 6.11.1 precisely because the system Qt here
+  is, so `/usr` can serve and there is no `~/Qt/6.11.1/gcc_64`. Pick the Android
+  kit to match what you already have and you save a gigabyte. (This is the
+  opposite of the browser build's situation, where the newest wasm kit `aqt`
+  offered was far behind the system Qt.)
+- **The NDK version is Qt's choice, not yours.** Each kit names the one it was
+  built against — `grep initially_configured_toolchain
+  $QT_ANDROID/lib/cmake/Qt6/qt.toolchain.cmake` prints the path, and r27c is
+  `ndk;27.2.12479018`. A different one links, and then crashes on a device in a
+  way that names neither the NDK nor Qt.
+- **The compile SDK is the newest platform you have installed**, which is not
+  the `QT_ANDROID_TARGET_SDK_VERSION` in `CMakeLists.txt` and not something the
+  project sets. Without `platforms;android-36` the build gets all the way to
+  Gradle and stops on `checkDebugAarMetadata`, complaining that
+  `androidx.core:core` wants API 36.
+- **Gradle is fussy about the JDK.** Too new and it stops at "Unsupported class
+  file major version" without mentioning Java. 17 or 21.
+- **Qt 6.8 is the floor here**, above this project's usual 6.5. The
+  `QT_ANDROID_*` properties in `CMakeLists.txt` are what set the package name
+  and SDK levels, and an older Qt ignores them in silence — leaving an app
+  called `mtgdeck` under `org.qtproject.example`, which cannot be published. On
+  an older kit you also have to add `<uses-permission
+  android:name="android.permission.INTERNET"/>` to the manifest by hand, or
+  every card image fails and the app merely looks broken.
+
+The one real difference on a phone is where the database lives. Everything
+inside an `.apk` is read-only, and SQLite cannot open a packaged asset anyway —
+Qt serves those through its own file engine, which has no file descriptor to
+hand to sqlite3. So `cards.db` travels as an asset and is unpacked to the app's
+private directory the first time the app runs: 17 MB copied once, and the app
+does write to it afterwards (`ensureCardColumns`, `ensureSetIcons`). It is
+unpacked again when the packaged database's size stops matching the stamp file
+recorded beside the copy — which is what makes re-running `ingest.py` and
+shipping a new build reach the device, without comparing a 17 MB file on every
+launch. `decks.db` sits in the same private directory and is created on first
+run, exactly as on the desktop.
+
+Two smaller things the phone gets: the back button backs out of the enlarged
+card, then out of whichever sheet is over the gallery, and only then leaves the
+app; and the deck rows' `+`/`−`/`×` buttons, which appear on hover on a desktop,
+are shown outright, because a finger cannot hover.
+
+`--release` gives you an **unsigned** release `.apk`. Signing it is a keystore
+and a `signingConfig`, and neither belongs in this repo.
+
+One ABI, `arm64-v8a`, which is every Android phone sold in the last several
+years and no emulator you will start by default — the stock x86_64 images cannot
+run it. To try it in an emulator, install the `android_x86_64` kit alongside and
+build again with `QT_ANDROID` pointed at that.
+
 ## Setup notes
 
 The ingest step is required before the first launch and takes a few minutes: it

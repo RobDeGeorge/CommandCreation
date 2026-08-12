@@ -12,6 +12,10 @@ build/
 # the WebAssembly build, from qt-cmake -B build-wasm (see CMakeLists.txt)
 build-wasm/
 
+# the Android build, from scripts/build-android.sh. Holds the Gradle project
+# androiddeployqt generates and a copy of cards.db staged as an app asset.
+build-android/
+
 # the assembled site, from scripts/build-site.sh — web/ plus a copy of the
 # wasm build, so everything in it is generated
 site/
