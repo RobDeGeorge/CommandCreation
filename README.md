@@ -245,11 +245,11 @@ Run it without releasing anything from the Actions tab — the `workflow_dispatc
 trigger builds all three and skips the upload. That is the way to find out
 whether the workflow still works, rather than finding out during a release.
 
-**The Android package wants a signing key.** Without one it is built debug-
-signed, which installs but is signed with a key Gradle invents on each run —
-so every release looks like a different app to Android and cannot update the
-one before it in place. With these four repository secrets set, it is signed
-properly and consistently:
+**The Android package wants a signing key.** Without one the workflow generates
+a throwaway key for that run so the package is installable at all — but a key
+that changes each run means every release looks like a different app to Android,
+and none of them can update the one before it in place. With these four
+repository secrets set, it is signed with the same key every time:
 
 | secret | what |
 | --- | --- |
