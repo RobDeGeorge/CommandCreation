@@ -1624,7 +1624,8 @@ ApplicationWindow {
                                                  imageNormal, rarity, imageBack)
                                 return
                             }
-                            window.showCard(imageNormal, name, rarity, imageBack)
+                            window.showCard(imageNormal, name, rarity, imageBack,
+                                            cardId, canBeCommander === 1, false)
                         }
                         // A touch screen has no right button. Holding a tile is
                         // the gesture that stands in for one everywhere else,
@@ -1693,8 +1694,12 @@ ApplicationWindow {
                 exportDialog.open()
             }
             onImportRequested: importDialog.open_()
-            onCardActivated: (cardId, image, cardName, rarity, backImage) =>
-                window.showCard(image, cardName, rarity, backImage)
+            // fromList: true — a card opened from the workspace is one that is
+            // already in the open list, so its menu offers to take it out
+            onCardActivated: (cardId, image, cardName, rarity, backImage,
+                              commanderEligible) =>
+                window.showCard(image, cardName, rarity, backImage,
+                                cardId, commanderEligible, true)
             onDeckCardMenuRequested: (cardId, cardName, label) =>
                 deckCardMenu.openFor(cardId, cardName, label)
         }
@@ -1763,12 +1768,21 @@ ApplicationWindow {
 
     // `backImage` is the far side of a double-faced card, "" for everything
     // else — see detailPopup
-    function showCard(image, cardName, rarity, backImage) {
+    //
+    // The last three are what the card *is* rather than what it looks like,
+    // and they are here so the enlarged view can carry the same menu the card
+    // has everywhere else — see detailPopup's ⋯ button. They can be left off,
+    // in which case the button is simply not offered.
+    function showCard(image, cardName, rarity, backImage,
+                      cardId, commanderEligible, fromList) {
         detailPopup.frontImage = image
         detailPopup.backImage = backImage || ""
         detailPopup.showingBack = false
         detailPopup.fullName = cardName
         detailPopup.cardRarity = rarity
+        detailPopup.cardId = cardId || ""
+        detailPopup.canBeCommander = commanderEligible === true
+        detailPopup.fromList = fromList === true
         detailPopup.open()
     }
 
@@ -1776,7 +1790,10 @@ ApplicationWindow {
         id: cardMenu
         onViewRequested: window.showCard(cardMenu.cardImage, cardMenu.cardName,
                                          cardMenu.cardRarity,
-                                         cardMenu.cardBackImage)
+                                         cardMenu.cardBackImage,
+                                         cardMenu.cardId,
+                                         cardMenu.canBeCommander,
+                                         cardMenu.showRemove)
         onNewListRequested: nameDialog.ask(
             "New list", "Name", "",
             function (n, kind) {
@@ -2359,6 +2376,14 @@ ApplicationWindow {
         modal: true
         property string cardRarity: ""
 
+        // Who the card is, as opposed to what it looks like — everything the
+        // menu below needs. Empty when whatever opened this did not say, which
+        // is what hides the button rather than offering one that would open a
+        // menu with nothing to act on.
+        property string cardId: ""
+        property bool canBeCommander: false
+        property bool fromList: false
+
         // A transform or modal DFC is two cards printed back to back, and only
         // the front was ever on screen. `backImage` is empty for the
         // single-faced majority, which is what decides whether there is
@@ -2399,6 +2424,36 @@ ApplicationWindow {
             Item {
                 width: parent.width
                 height: 40
+
+                // Everything you could do to this card by right-clicking it.
+                //
+                // On a desktop the enlarged view is a detour — you right-click
+                // the tile, and the card is one row of that menu. With a
+                // finger there is no right button: the gallery's press-and-hold
+                // stands in for one, but a tap is what a picture invites, and a
+                // tap lands you here with the card filling the screen and no
+                // way to do anything with it but go back and hold it instead.
+                //
+                // So the same menu opens from here, on the same card, minus its
+                // "View …" row. One menu, one set of behaviours, rather than a
+                // second sort-of menu that drifts from the first.
+                PixelButton {
+                    id: detailMenuButton
+                    sprite: "mtg-icon-more"
+                    pixelScale: 2
+                    visible: detailPopup.cardId !== ""
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    tooltip: "Add to a list, and everything else"
+                    onClicked: cardMenu.openFor(
+                        detailPopup.cardId, detailPopup.fullName,
+                        detailPopup.canBeCommander, detailPopup.fromList,
+                        detailPopup.frontImage, detailPopup.cardRarity,
+                        detailPopup.backImage,
+                        false,               // the card is already on screen
+                        detailMenuButton)
+                }
+
                 Text {
                     id: detailName
                     anchors.verticalCenter: parent.verticalCenter

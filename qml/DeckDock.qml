@@ -24,8 +24,12 @@ Rectangle {
     signal newListRequested()
     signal exportRequested()
     signal importRequested()
+    // The last argument is whether the card could be made this deck's
+    // commander, which the enlarged view offers as a menu row — the row is the
+    // only thing that needs it, and only the row that opened the view knows.
     signal cardActivated(string cardId, string imageUrl, string cardName,
-                         string rarity, string backImageUrl)
+                         string rarity, string backImageUrl,
+                         bool commanderEligible)
     // A card in the open list gets its own menu — see DeckCardMenu.qml for why
     // it isn't the gallery's CardMenu.
     signal deckCardMenuRequested(string cardId, string cardName, string label)
@@ -366,11 +370,14 @@ Rectangle {
             TapHandler {
                 acceptedButtons: Qt.LeftButton
                 enabled: commanderSeat.seated
+                // false, not true: this card *is* the commander already, so the
+                // one thing the row would offer is the thing that has happened
                 onTapped: dock.cardActivated(deckStore.commanderId,
                                              deckStore.commanderImage,
                                              deckStore.commanderName,
                                              deckStore.commanderRarity,
-                                             deckStore.commanderBack)
+                                             deckStore.commanderBack,
+                                             false)
             }
 
             RowLayout {
@@ -719,7 +726,8 @@ Rectangle {
                     TapHandler {
                         acceptedButtons: Qt.LeftButton
                         onTapped: dock.cardActivated(cardId, imageNormal, name,
-                                                     rarity, imageBack)
+                                                     rarity, imageBack,
+                                                     canBeCommander === 1)
                         // The touch stand-in for the right-click below: a hold
                         // on the row opens the same menu. On the same handler
                         // as the tap rather than a second one, because that is

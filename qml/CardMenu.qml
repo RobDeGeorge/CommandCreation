@@ -15,6 +15,11 @@ Menu {
     property string cardRarity: ""
     property bool canBeCommander: false
     property bool showRemove: false      // true when opened from inside a list
+    // False when the card is already on screen at full size — the menu is
+    // being opened from the enlarged view itself, where a row offering to show
+    // you what you are looking at is one row of noise on a phone's worth of
+    // space. Every other row applies exactly as it does out in the gallery.
+    property bool showView: true
     property var listRows: []
 
     signal viewRequested()
@@ -43,8 +48,16 @@ Menu {
     }
 
     // pull fresh membership, then show — cheap enough to do per open
+    //
+    // The last two are for the enlarged view and can be left off everywhere
+    // else: `viewable` false drops the "View …" row, and `anchor` is an item
+    // to hang the menu under instead of putting it at the pointer. Without an
+    // anchor a Menu opens where the cursor is, which is the right answer for a
+    // right-click and no answer at all for a button pressed with a finger —
+    // there is no cursor on a phone, so the position is wherever the mouse
+    // last was, i.e. the top-left corner.
     function openFor(id, name, commanderEligible, fromList, image, rarity,
-                     backImage) {
+                     backImage, viewable, anchor) {
         cardId = id
         cardName = name
         cardImage = image || ""
@@ -52,11 +65,17 @@ Menu {
         cardRarity = rarity || ""
         canBeCommander = commanderEligible === true
         showRemove = fromList === true
+        showView = viewable !== false
         listRows = deckStore.listsForCard(id)
         // every label and every row is settled by now, so this is the one
         // moment the widths are worth measuring
         fitWidth()
-        popup()
+        if (anchor)
+            // just under the button, and shifted left by the difference in
+            // widths so a menu wider than its button still lands on screen
+            popup(anchor, Math.min(0, anchor.width - width), anchor.height)
+        else
+            popup()
     }
 
     // A row on the overlay plate, with one of the 16px sprites in the gutter.
@@ -117,10 +136,11 @@ Menu {
         sprite: "mtg-icon-search"
         text: "View " + (menu.cardName.length > 28
               ? menu.cardName.substring(0, 27) + "…" : menu.cardName)
+        shown: menu.showView
         onTriggered: menu.viewRequested()
     }
 
-    PixelSeparator {}
+    PixelSeparator { visible: menu.showView }
 
     PixelMenuItem {
         text: "Add to list…"
