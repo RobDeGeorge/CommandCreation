@@ -342,6 +342,28 @@ jobs:
           export QT_ANDROID_KEYSTORE_KEY_PASS="${{ steps.keystore.outputs.keypass }}"
           ./scripts/build-android.sh --release --sign
 
+      # The one thing about this package that cannot be seen by looking at it.
+      #
+      # Qt reaches TLS through an OpenSSL it loads by name at runtime, and no Qt
+      # kit ships one — so an .apk built without it installs, launches, draws
+      # its whole UI and lists every card, while every https:// request fails
+      # before a packet leaves the phone and every card image is blank. Nothing
+      # in the build says so: the TLS *plugin* is packaged either way, because
+      # that part does come with Qt.
+      #
+      # v0.9.0 shipped exactly that. It is checked here rather than trusted to
+      # CMakeLists.txt, which can only see the files it was handed, because what
+      # matters is what ended up inside the package that gets published.
+      - name: The .apk can actually open an https connection
+        run: |
+          apk=$(find build-android -name '*.apk' | head -1)
+          for lib in libssl libcrypto; do
+            unzip -l "$apk" | grep -q "$lib" || {
+              echo "$lib is not in $apk — every card image would be blank" >&2
+              exit 1; }
+          done
+          unzip -l "$apk" | grep -E 'libssl|libcrypto|qopensslbackend'
+
       - name: Name it after the release
         run: |
           # A signed build leaves both the unsigned package and the signed
