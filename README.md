@@ -168,9 +168,27 @@ export JAVA_HOME=/usr/lib/jvm/java-21-openjdk        # not a newer one — see b
 ./scripts/build-android.sh --install     # or without --install for just the .apk
 ```
 
-Out comes a ~32 MB `.apk`: 8 MB of compressed `cards.db`, and the rest Qt.
+Out comes a ~34 MB `.apk`: 8 MB of compressed `cards.db`, 2 MB of OpenSSL, and
+the rest Qt.
 
-Five things that will cost you an afternoon if you guess at them:
+`build-android.sh` downloads that OpenSSL on the first build
+(`scripts/fetch-android-openssl.sh`, ~4.6 MB into `third_party/`, pinned to a
+commit and checked against a hash recorded in the script). It is not optional
+and it is not a nicety — see the first item below.
+
+Six things that will cost you an afternoon if you guess at them:
+
+- **The package has to carry its own OpenSSL.** Qt for Android reaches TLS
+  through `libssl_3.so` and `libcrypto_3.so` loaded by name at runtime; no Qt
+  kit ships them and Android has had no system copy since API 24. Miss them and
+  the app installs, launches, unpacks its database, draws every pixel of its UI
+  and lists every card by name — while every `https://` request fails before a
+  packet is sent, so every card image is blank. Nothing anywhere says why. It
+  looks like the image URLs are wrong, and they are fine. What makes it so good
+  at hiding is that `androiddeployqt` packages Qt's TLS *plugin* on its own,
+  because that part does come with Qt, so the `.apk` looks correctly equipped.
+  v0.9.0 shipped this way. CMakeLists.txt now refuses to configure without the
+  libraries, and `release.yml` checks the built `.apk` for them.
 
 - **`QT_HOST_PATH` must be a Qt of exactly the same version** as the Android
   kit — `moc`, `rcc` and the QML compiler have to run on this machine, and an
@@ -192,7 +210,7 @@ Five things that will cost you an afternoon if you guess at them:
   `androidx.core:core` wants API 36.
 - **Gradle is fussy about the JDK.** Too new and it stops at "Unsupported class
   file major version" without mentioning Java. 17 or 21.
-- **Qt 6.9 is the floor here**, above this project's usual 6.5. The
+- **Qt 6.9.3 is the floor here**, above this project's usual 6.5. The
   `QT_ANDROID_*` properties in `CMakeLists.txt` are what set the package name,
   the app's name and the SDK levels, and an older Qt ignores the ones it does
   not have in silence: 6.7 and earlier leave the package as
@@ -200,7 +218,11 @@ Five things that will cost you an afternoon if you guess at them:
   right but not the label, so the icon on the home screen reads "mtgdeck". On
   an older kit you also have to add `<uses-permission
   android:name="android.permission.INTERNET"/>` to the manifest by hand, or
-  every card image fails and the app merely looks broken.
+  every card image fails and the app merely looks broken. The `.3` is the safe
+  area (below): `SafeArea` arrived in 6.9, but on Android it reported zero until
+  something forced a recalculation — QTBUG-135808 and QTBUG-139690 — so on 6.9.0
+  through 6.9.2 the app comes up under the status bar and only rights itself if
+  you rotate the phone and rotate it back.
 
 The one real difference on a phone is where the database lives. Everything
 inside an `.apk` is read-only, and SQLite cannot open a packaged asset anyway —
@@ -218,6 +240,20 @@ Two smaller things the phone gets: the back button backs out of the enlarged
 card, then out of whichever sheet is over the gallery, and only then leaves the
 app; and the deck rows' `+`/`−`/`×` buttons, which appear on hover on a desktop,
 are shown outright, because a finger cannot hover.
+
+The third is the screen's own edges. A phone does not hand the app the whole
+screen any more: from Android 15, an app targeting SDK 35 or higher is laid out
+edge to edge whether it asks to be or not, and from Android 16 the flag that
+used to opt out of that is ignored — `QT_ANDROID_TARGET_SDK_VERSION` is 36, so
+this is not a choice the project has. The window really does begin at the top of
+the screen, underneath the status bar, and Qt measures that for you but applies
+none of it. `qml/SafeInsets.qml` does the measuring and `Main.qml` spends it:
+the top bar grows by the status bar's height and keeps its controls in the 36
+pixels below, and the three columns stop short of the gesture bar and of
+whatever a cutout takes out of the sides in landscape. All four margins are zero
+on a desktop and in a browser, which is why nothing else in `qml/` has to ask
+what it is running on. Left unhandled — as in v0.9.0 — the notification bar sits
+directly on top of the search and workspace switches.
 
 `--release` gives you an **unsigned** release `.apk`. Signing it is a keystore
 and a `signingConfig`, and neither belongs in this repo.

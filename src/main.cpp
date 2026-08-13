@@ -160,6 +160,19 @@ int main(int argc, char *argv[])
 
     engine.rootContext()->setContextProperty(QStringLiteral("cardModel"), &model);
     engine.rootContext()->setContextProperty(QStringLiteral("deckStore"), &decks);
+
+    // Whether qml/SafeInsets.qml can be loaded at all. It names SafeArea, which
+    // is a Qt 6.9 type, and find_package in CMakeLists.txt asks for 6.5 — so on
+    // an older kit the file has to go unread rather than merely unused, since a
+    // QML type that cannot be resolved is an error at load and not a fallback.
+    // Main.qml keys a Loader off this and treats every margin as zero without
+    // it, which is what every build that isn't a phone wants anyway.
+    //
+    // Compile-time, and correct because it is: QML is executed by the same Qt
+    // these headers came from, so there is no runtime version to disagree with.
+    engine.rootContext()->setContextProperty(
+        QStringLiteral("safeAreaSupported"),
+        QT_VERSION >= QT_VERSION_CHECK(6, 9, 0));
     engine.load(mainQml());
     if (engine.rootObjects().isEmpty()) {
         std::fprintf(stderr, "Couldn't load %s\n", qPrintable(mainQml().toString()));

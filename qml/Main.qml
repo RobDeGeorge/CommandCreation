@@ -13,6 +13,49 @@ ApplicationWindow {
     height: 900
     title: "MTG Commander Deck Builder — Phase 2"
     color: "#d9d9dc"
+
+    // ---- the edges the system keeps -------------------------------------
+    // A phone does not hand the app the screen any more. From Android 15 an app
+    // that targets SDK 35 or higher is laid out edge to edge whether it asks to
+    // be or not — QT_ANDROID_TARGET_SDK_VERSION in CMakeLists.txt is 36 — and
+    // from Android 16 the flag that used to opt out of that is ignored. So the
+    // window genuinely does start at the top of the screen, underneath the
+    // status bar, and it is the app's job to keep anything you need to touch
+    // out from under it. Qt applies none of this for you; it only measures it.
+    //
+    // Everything below is zero on desktop and in the browser, so the four
+    // margins can be spent without asking which platform this is.
+    Loader {
+        id: systemInsets
+        active: safeAreaSupported
+        source: "SafeInsets.qml"
+        // The whole window, and it has to be said in exactly this way.
+        //
+        // A child declared here is parented to the ApplicationWindow's
+        // contentItem, which starts below the header — measuring the status bar
+        // against that is measuring it against the one part of the window it
+        // cannot reach, and the answer is always zero. Window.contentItem is
+        // the root of the scene and does span the header.
+        //
+        // The size is bound to the window rather than anchored to the parent
+        // because `anchors.fill: parent` is resolved against the parent this
+        // had at creation, and reassigning `parent` afterwards drops the
+        // anchor without a word — leaving a 0x0 probe that dutifully reports no
+        // margins at all, on every platform, forever.
+        parent: Window.contentItem
+        width: window.width
+        height: window.height
+        // measured, never seen: an Item with no content paints nothing and
+        // accepts no input, and this keeps it behind everything regardless
+        z: -1
+    }
+    // `|| 0` rather than a bare read: an unresolved margin would come back
+    // undefined and land in the layout as NaN, which does not fail loudly — it
+    // collapses whatever it is anchoring to nothing at all.
+    readonly property real safeTop: systemInsets.item ? (systemInsets.item.insetTop || 0) : 0
+    readonly property real safeBottom: systemInsets.item ? (systemInsets.item.insetBottom || 0) : 0
+    readonly property real safeLeft: systemInsets.item ? (systemInsets.item.insetLeft || 0) : 0
+    readonly property real safeRight: systemInsets.item ? (systemInsets.item.insetRight || 0) : 0
     // ---- the card face doubles as the filter form ------------------------
     // Every control lives where that thing lives on a real Magic card: the
     // name bar takes the name, the text box takes rules text, the set symbol
@@ -379,9 +422,20 @@ ApplicationWindow {
     // saying. The bar is cut to exactly one control's height, and nothing that
     // would make it grow is allowed up here.
     header: Rectangle {
-        // the sprites' 16 rows doubled, plus a pixel of air either side
-        implicitHeight: 36
+        // the sprites' 16 rows doubled, plus a pixel of air either side —
+        // and then whatever the status bar is standing on, because this is the
+        // band at the top of the window and so it is this that ends up beneath
+        // it. The bar grows rather than moves: the extra height is painted in
+        // the bar's own grey, so the status bar sits on a strip that matches
+        // instead of on whatever happened to be behind it, and the controls
+        // below are pushed down clear of it by the same amount.
+        implicitHeight: 36 + window.safeTop
         color: "#cfcfd3"
+
+        // Every control in here centres on the bar, so each one is nudged down
+        // by half the strip to centre on the 36 that are left rather than on
+        // the taller rectangle. Naming it once keeps the three of them in step.
+        readonly property real barOffset: window.safeTop / 2
 
         // the search form's switch, at the end of the bar the form is under —
         // the mirror of the workspace switch at the other end
@@ -397,8 +451,9 @@ ApplicationWindow {
             checked: window.panelOpen
             tooltip: "Show or hide the search form"
             anchors.left: parent.left
-            anchors.leftMargin: 6
+            anchors.leftMargin: 6 + window.safeLeft
             anchors.verticalCenter: parent.verticalCenter
+            anchors.verticalCenterOffset: parent.barOffset
             onClicked: window.openSide("panel", !window.panelOpen)
         }
 
@@ -413,11 +468,17 @@ ApplicationWindow {
             // rather than a column beside it, so there is no first column to be
             // flush with and this sits straight after the switch.
             anchors.left: parent.left
+            // The gallery it lines up with is inside the inset content area,
+            // so the wide branch counts from there rather than from the window
+            // edge. The narrow branch measures off the switch, which has
+            // already been moved, and so needs nothing added.
             anchors.leftMargin: window.narrow
                 ? panelToggle.x + panelToggle.width + 8
-                : Math.max(filterPanel.width + grid.anchors.leftMargin,
+                : Math.max(window.safeLeft + filterPanel.width
+                               + grid.anchors.leftMargin,
                            panelToggle.x + panelToggle.width + 10)
             anchors.verticalCenter: parent.verticalCenter
+            anchors.verticalCenterOffset: parent.barOffset
             spacing: window.narrow ? 5 : 8
 
             // the one number you watch while you are narrowing things down, so
@@ -489,8 +550,9 @@ ApplicationWindow {
             tooltip: "Show or hide the deck workspace"
             // right-hand end of the bar, over the side it opens and shuts
             anchors.right: parent.right
-            anchors.rightMargin: 6
+            anchors.rightMargin: 6 + window.safeRight
             anchors.verticalCenter: parent.verticalCenter
+            anchors.verticalCenterOffset: parent.barOffset
             onClicked: window.openSide("dock", !window.dockOpen)
         }
 
@@ -504,6 +566,14 @@ ApplicationWindow {
     // ---- filter panel + card grid ---------------------------------------
     Item {
         anchors.fill: parent
+        // The three columns stop at the edges the system kept: the gesture bar
+        // or navigation buttons along the bottom, and a cutout or a curved
+        // corner at the sides in landscape. The top is not among them — the
+        // header above has already taken the status bar's height out of what
+        // this fills. Zero everywhere but a phone.
+        anchors.leftMargin: window.safeLeft
+        anchors.rightMargin: window.safeRight
+        anchors.bottomMargin: window.safeBottom
 
         Rectangle {
             id: filterPanel
