@@ -101,6 +101,25 @@ if [[ -z "${JAVA_HOME:-}" ]]; then
     echo "      ($(java -version 2>&1 | head -1)). JDK 17 or 21 if that fails." >&2
 fi
 
+# OpenSSL, which the package has to carry for any https:// request to work at
+# all — see the block in CMakeLists.txt that packages it. Which ABI to fetch
+# follows from the kit: qt-cmake below picks ANDROID_ABI from the same name, so
+# asking here keeps the two from ever disagreeing.
+#
+# ANDROID_ABI in the environment overrides it, for a kit whose directory is not
+# named the way Qt's own are.
+if [[ -z "${ANDROID_ABI:-}" ]]; then
+    case "$(basename "$QT_ANDROID")" in
+        *arm64_v8a) ANDROID_ABI=arm64-v8a ;;
+        *armv7)     ANDROID_ABI=armeabi-v7a ;;
+        *x86_64)    ANDROID_ABI=x86_64 ;;
+        *x86)       ANDROID_ABI=x86 ;;
+        *) echo "cannot tell which ABI $QT_ANDROID is for — set ANDROID_ABI" >&2
+           exit 1 ;;
+    esac
+fi
+"$ROOT/scripts/fetch-android-openssl.sh" "$ANDROID_ABI"
+
 "$QT_ANDROID/bin/qt-cmake" -S "$ROOT" -B "$OUT" \
     -DCMAKE_BUILD_TYPE="$MODE" \
     -DQT_HOST_PATH="$QT_HOST_PATH" \

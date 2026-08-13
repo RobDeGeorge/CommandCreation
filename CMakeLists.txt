@@ -220,4 +220,58 @@ if(ANDROID)
     if(COMMAND qt_add_android_permission)
         qt_add_android_permission(mtgdeck NAME android.permission.INTERNET)
     endif()
+
+    # The other half of that permission, and the half nothing warns about.
+    #
+    # Every one of those CDN URLs is https, and Qt for Android reaches TLS
+    # through OpenSSL loaded at runtime — the kit is built with
+    # QT_FEATURE_openssl_linked=OFF, so libssl_3.so and libcrypto_3.so are
+    # dlopen()ed by name rather than linked. No Qt kit ships them and Android
+    # has not had a system copy since API 24, so they are only in the package if
+    # something puts them there.
+    #
+    # What makes this worth six paragraphs is how well it hides. androiddeployqt
+    # packages the TLS *backend plugin* on its own, because that ships with Qt —
+    # so the .apk looks correctly equipped, and everything that is not TLS works.
+    # The app launches, unpacks its database, draws its whole UI and lists every
+    # card by name. Only the pictures are missing, which reads as "the image
+    # URLs are wrong" and not as "this build cannot open an https connection".
+    #
+    # FATAL_ERROR rather than a warning, and rather than quietly building
+    # without: a package that has come this far is one somebody is about to
+    # install, and the failure it would ship is invisible until then.
+    set(MTG_ANDROID_OPENSSL_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/android_openssl"
+        CACHE PATH "Prebuilt Android OpenSSL — see scripts/fetch-android-openssl.sh")
+
+    # ANDROID_ABI is the one the toolchain file set from the kit being built,
+    # so this follows QT_ANDROID rather than needing to be told twice.
+    set(MTG_SSL_DIR "${MTG_ANDROID_OPENSSL_DIR}/ssl_3/${ANDROID_ABI}")
+    set(MTG_SSL_LIBS "${MTG_SSL_DIR}/libssl_3.so" "${MTG_SSL_DIR}/libcrypto_3.so")
+
+    foreach(lib IN LISTS MTG_SSL_LIBS)
+        if(NOT EXISTS "${lib}")
+            message(FATAL_ERROR
+                "${lib} is missing, and without it this .apk would install and "
+                "run with every card image silently blank — Qt's TLS plugin "
+                "loads OpenSSL by name at runtime and no Qt kit provides it.\n"
+                "Fetch it first:\n"
+                "    ./scripts/fetch-android-openssl.sh ${ANDROID_ABI}\n"
+                "(scripts/build-android.sh does this for you; this path is for "
+                "a cmake run by hand. -DMTG_ANDROID_OPENSSL_DIR=... points at a "
+                "checkout you already have.)")
+        endif()
+    endforeach()
+
+    # APPEND, not set_target_properties: this list is the same one Qt uses for
+    # any other bundled .so, and assigning it would drop whatever else put
+    # something there.
+    set_property(TARGET mtgdeck APPEND PROPERTY QT_ANDROID_EXTRA_LIBS ${MTG_SSL_LIBS})
+
+    # Deliberately not target_link_libraries() against them — upstream's own
+    # android_openssl.cmake does that, but this app never calls OpenSSL itself.
+    # Qt's plugin is the only thing that opens these, and it does so by name at
+    # runtime; linking would add two DT_NEEDED entries that buy nothing and
+    # would make the app fail to *start* rather than fail to fetch if they ever
+    # went missing.
 endif()

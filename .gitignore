@@ -30,3 +30,7 @@ tools/.set-svg-cache/
 
 # aqtinstall drops this wherever it is run from
 aqtinstall.log
+
+# scripts/fetch-android-openssl.sh downloads the OpenSSL the .apk has to carry
+# (~4.6 MB of prebuilt .so, pinned and hash-checked there, not ours to track)
+third_party/

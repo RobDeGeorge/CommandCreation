@@ -15,6 +15,7 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlError>
+#include <QSslSocket>
 #include <QUrl>
 
 #include <cstdio>
@@ -103,6 +104,34 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("MTG Commander Deck Builder"));
     usePixelFont(&app);
+
+    // Say out loud when this build cannot open an https connection.
+    //
+    // Every card image is fetched from Scryfall's CDN over TLS, and Qt reaches
+    // TLS through an OpenSSL it loads at runtime. When that library is not
+    // there — the standing hazard on Android, where nothing ships one; see
+    // CMakeLists.txt — nothing throws and nothing logs. Every request simply
+    // fails, and the app is left looking like one whose image URLs are wrong.
+    //
+    // The failure it names is worth an hour of anyone's afternoon, and asking
+    // costs one call at startup. On a phone this comes out in logcat, which is
+    // the only place there is to say anything at all:
+    //
+    //     adb logcat -s mtgdeck:*
+    if (!QSslSocket::supportsSsl()) {
+        // The runtime string is what Qt actually managed to load, so it is
+        // empty in the case being reported — printed anyway, because the one
+        // thing worse than "nothing" here is a wrong version quietly loaded.
+        std::fprintf(stderr,
+                     "No TLS: Qt could not load OpenSSL, so every https request "
+                     "will fail and no card image can load.\n"
+                     "  built against: %s\n"
+                     "  loaded:        %s\n",
+                     qPrintable(QSslSocket::sslLibraryBuildVersionString()),
+                     QSslSocket::sslLibraryVersionString().isEmpty()
+                         ? "nothing"
+                         : qPrintable(QSslSocket::sslLibraryVersionString()));
+    }
 
     // One connection for both models, so a card added to a list is visible to
     // every query immediately rather than after a commit lands on disk.
