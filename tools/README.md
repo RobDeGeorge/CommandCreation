@@ -9,6 +9,7 @@ mtg-buttons.js    button / icon / mana-pip sprites  -> qml/assets/*.png
 build-font.py     the same glyphs as a TTF          -> qml/assets/OasisPixel.ttf
 set-glyphs.py     Scryfall set symbols, reduced     -> tools/set-glyphs.json
 set-glyphs.js     ...built into sprites             -> qml/assets/sets{,-hot}/*.png
+readme-art.js     the README's banner and rule      -> docs/*.png
 ```
 
 `pixelfont.js` is the single source of truth for the typeface. The button
@@ -23,7 +24,12 @@ follow.
 node tools/mtg-buttons.js         # needs the pixel art engine (see below)
 python3 tools/build-font.py       # needs fonttools
 python3 tools/set-glyphs.py && node tools/set-glyphs.js   # needs PySide6
+node tools/readme-art.js          # needs the pixel art engine
 ```
+
+`readme-art.js` composites the README's banner out of sprites already in the
+library — the commander crown and the six mana pips, read back and stamped in —
+so redrawing a pip in the editor and re-running it updates the README too.
 
 These two are the only Python left in the project, and neither runs at
 application start — the app itself is C++. Nothing here is installed by
