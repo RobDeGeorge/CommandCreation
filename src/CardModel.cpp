@@ -1,5 +1,7 @@
 #include "CardModel.h"
 
+#include <QSet>
+
 namespace CardRoles {
 
 const QStringList Names = {
@@ -79,7 +81,7 @@ CardModel::CardModel(Db *db, QObject *parent)
     // Debounce keystrokes so we don't query on every character.
     m_debounce.setSingleShot(true);
     m_debounce.setInterval(150);
-    connect(&m_debounce, &QTimer::timeout, this, &CardModel::refresh);
+    connect(&m_debounce, &QTimer::timeout, this, [this] { refresh(); });
     refresh();
 }
 
@@ -134,10 +136,16 @@ void CardModel::fetchMore(const QModelIndex &parent)
 
 void CardModel::setFilter(const QString &key, const QVariant &value)
 {
+    const QVariantMap before = m_filters;
     if (isBlank(value))
         m_filters.remove(key);
     else
         m_filters.insert(key, value);
+    // Re-asserting a filter the map already holds is not a search. It happens
+    // whenever the open list changes under a gallery already held to it, and
+    // running the query again would only throw the grid back to the top.
+    if (m_filters == before)
+        return;
     m_debounce.start();
     emit filtersChanged();
 }
@@ -247,16 +255,94 @@ QString CardModel::previewRarity() const
 
 // -- internals ---------------------------------------------------------------
 
-QVariantList CardModel::query(int offset)
+QVariantList CardModel::query(int offset, int limit)
 {
-    return m_db->search(m_filters, m_sort, m_sortDescending, Page, offset);
+    return m_db->search(m_filters, m_sort, m_sortDescending,
+                        limit > 0 ? limit : Page, offset);
 }
 
-void CardModel::refresh()
+void CardModel::reload()
 {
+    // The list the gallery is held to has gained or lost a card, so the query
+    // has to run again. What it must not do is *reset*: a reset throws every
+    // delegate away, and the view comes back at the top, which costs you your
+    // place in the gallery for the sake of one tile appearing.
+    //
+    // So run the same query and hand the view the difference — the rows that
+    // actually went and came — as row-level inserts and removes. A view that
+    // is told what changed keeps its position through it without being asked
+    // to remember and restore anything, and nothing races the relayout.
+    if (m_debounce.isActive())
+        return;   // a filter change is already queued, and it owns the query
+
+    const int limit = qMax(1, (m_rows.size() + Page - 1) / Page) * Page;
+    const QVariantList fresh = query(0, limit);
+
+    const int total = m_db->countMatching(m_filters);
+    if (total != m_total) {
+        m_total = total;
+        emit countChanged();
+    }
+
+    auto idAt = [](const QVariantList &rows, int i) {
+        return rows.at(i).toMap().value(QStringLiteral("id")).toString();
+    };
+
+    QSet<QString> freshIds;
+    freshIds.reserve(fresh.size());
+    for (int i = 0; i < fresh.size(); ++i)
+        freshIds.insert(idAt(fresh, i));
+
+    // Drop what is gone, walking backwards so the indices ahead of the cursor
+    // are still the ones being talked about.
+    for (int i = m_rows.size() - 1; i >= 0; --i) {
+        if (freshIds.contains(idAt(m_rows, i)))
+            continue;
+        beginRemoveRows(QModelIndex(), i, i);
+        m_rows.removeAt(i);
+        endRemoveRows();
+    }
+
+    // Then add what arrived. Both lists carry the same sort, so a row missing
+    // from the old one belongs exactly where it sits in the new one.
+    QSet<QString> haveIds;
+    haveIds.reserve(m_rows.size());
+    for (int i = 0; i < m_rows.size(); ++i)
+        haveIds.insert(idAt(m_rows, i));
+
+    for (int i = 0; i < fresh.size(); ++i) {
+        const QString id = idAt(fresh, i);
+        if (haveIds.contains(id))
+            continue;
+        const int at = qMin(i, m_rows.size());
+        beginInsertRows(QModelIndex(), at, at);
+        m_rows.insert(at, fresh.at(i));
+        endInsertRows();
+    }
+
+    // The preview is the one card the panel shows for the current filters, and
+    // it can move when the list behind them does.
+    const QVariantMap preview = m_db->previewCard(m_filters);
+    if (preview != m_preview) {
+        m_preview = preview;
+        emit previewChanged();
+    }
+}
+
+void CardModel::refresh(bool keepLoaded)
+{
+    // A reset costs the view its place, which is right when the question
+    // changed and wrong when only the answer did. Say which this is, and the
+    // grid holds or drops its position accordingly — see qml/Main.qml.
+    if (!keepLoaded)
+        emit searching();
+
+    // Round up to whole pages, so what fetchMore() loads next still lands on a
+    // page boundary.
+    const int pages = keepLoaded ? (m_rows.size() + Page - 1) / Page : 1;
     beginResetModel();
     m_total = m_db->countMatching(m_filters);
-    m_rows = query(0);
+    m_rows = query(0, qMax(1, pages) * Page);
     endResetModel();
     emit countChanged();
 

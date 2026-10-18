@@ -48,6 +48,15 @@ Rectangle {
                 cardModel.setFilter("in_list", deckStore.activeId > 0
                                                ? deckStore.activeId : null)
         }
+        // Adding or removing a card changes what a gallery held to that list
+        // answers, so the query has to run again. reload() rather than a
+        // filter change, because this is the same search as before and the
+        // grid should stay where the hand left it.
+        function onContentsChanged() {
+            if (cardModel.listFilter !== 0
+                    && cardModel.listFilter === deckStore.activeId)
+                cardModel.reload()
+        }
     }
 
     function pipColor(letter) {

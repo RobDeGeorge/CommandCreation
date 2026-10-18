@@ -69,6 +69,10 @@ public:
     Q_INVOKABLE void setFilter(const QString &key, const QVariant &value);
     Q_INVOKABLE void clearFilters();
 
+    // Run the current query again without treating it as a new search: the
+    // grid holds its place across it. See reloading().
+    Q_INVOKABLE void reload();
+
     // One of "name", "cmc", "edhrec", "set", "rarity".
     Q_INVOKABLE void setSortOrder(const QString &sort);
     Q_INVOKABLE void setSortDescending(bool descending);
@@ -77,10 +81,14 @@ signals:
     void countChanged();
     void previewChanged();
     void filtersChanged();
+    // Emitted just before a reset that answers a *new* question — a filter or
+    // sort change. Its absence marks a reset that only refreshes the current
+    // answer, which a view should ride out without losing its place.
+    void searching();
 
 private:
-    QVariantList query(int offset);
-    void refresh();
+    QVariantList query(int offset, int limit = 0);
+    void refresh(bool keepLoaded = false);
 
     Db *m_db;
     QVariantList m_rows;

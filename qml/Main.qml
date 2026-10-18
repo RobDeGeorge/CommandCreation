@@ -1468,6 +1468,43 @@ ApplicationWindow {
 
             ScrollBar.vertical: ScrollBar {}
 
+            // A model reset throws every delegate away, and the view lands
+            // back at the top. That is right for a new search and wrong for
+            // everything else — adding a card to the open list used to cost
+            // you your place in the gallery. So hold the position by default
+            // and drop it only when cardModel says the question itself
+            // changed.
+            property real heldY: 0
+            property bool newSearch: false
+
+            function restoreY() {
+                contentY = grid.newSearch
+                    ? originY
+                    : Math.min(grid.heldY,
+                               Math.max(originY, contentHeight - height))
+                grid.newSearch = false
+            }
+
+            Connections {
+                target: cardModel
+                function onSearching() { grid.newSearch = true }
+                function onModelAboutToBeReset() { grid.heldY = grid.contentY }
+                function onModelReset() {
+                    // Once now, and once after the view has re-laid out: at
+                    // this instant contentHeight is still the old delegates',
+                    // so the clamp above would use a height that no longer
+                    // describes the grid.
+                    const y = grid.heldY
+                    const fresh = grid.newSearch
+                    grid.restoreY()
+                    Qt.callLater(function () {
+                        grid.heldY = y
+                        grid.newSearch = fresh
+                        grid.restoreY()
+                    })
+                }
+            }
+
             function rarityColor(r) {
                 return { common: "#5a5a5f", uncommon: "#7d95a6",
                          rare: "#b58e2f", mythic: "#d4512c" }[r] || "#5a5a5f"
