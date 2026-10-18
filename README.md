@@ -414,6 +414,18 @@ that host must do:
 - send `.wasm` as **`application/wasm`**, or the browser cannot stream-compile
   and buffers all 35 MB before it starts
 - **compress**: ~52 MB raw against ~17 MB gzipped
+
+GitHub Pages does both, and that is where it lives:
+**[robdegeorge.com/commandcreation](https://robdegeorge.com/commandcreation/)**.
+`scripts/deploy-site.sh` runs `build-site.sh` (passing `--build` along) and
+force-pushes `site/` to `gh-pages` as one orphan commit, so each deploy replaces
+the last and 50-odd MB of build never accumulates in history. The account's user
+site owns the domain, so this repo's Pages site appears at `/CommandCreation/`;
+the lowercase address is a redirect kept in the website repo.
+
+`WASM_BUILD=<dir>` points either script at a wasm build other than
+`build-wasm/`. A build tree is only good on the machine that configured it —
+CMake bakes in absolute paths — so in a synced folder, build outside it.
 </details>
 
 <details>

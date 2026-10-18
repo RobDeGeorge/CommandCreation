@@ -6,6 +6,10 @@
 #   ./scripts/build-site.sh          use the existing build-wasm/
 #   ./scripts/build-site.sh --build  rebuild it first
 #
+# WASM_BUILD=<dir> points it at a build elsewhere. build-wasm/ inside a synced
+# folder is only good on the machine that configured it — CMake bakes absolute
+# paths into the build tree.
+#
 # The result is plain static files with no server-side anything, so it can go on
 # any static host. Two requirements of whatever serves it:
 #
@@ -18,7 +22,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="$ROOT/site"
-WASM="$ROOT/build-wasm"
+WASM="${WASM_BUILD:-$ROOT/build-wasm}"
 
 if [[ "${1:-}" == "--build" ]]; then
     [[ -n "${EMSDK:-}" ]] || { echo "source ~/emsdk/emsdk_env.sh first" >&2; exit 1; }
