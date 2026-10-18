@@ -15,8 +15,10 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlError>
-#include <QSslSocket>
 #include <QUrl>
+#ifndef Q_OS_WASM
+#include <QSslSocket>
+#endif
 
 #include <cstdio>
 
@@ -118,6 +120,12 @@ int main(int argc, char *argv[])
     // the only place there is to say anything at all:
     //
     //     adb logcat -s mtgdeck:*
+    //
+    // Not in the browser: there Qt has no QSslSocket at all, because the page
+    // does not open sockets — every request goes out through fetch() and the
+    // browser owns the TLS. The class is absent from the wasm kit, so this
+    // cannot merely be left to return true.
+#ifndef Q_OS_WASM
     if (!QSslSocket::supportsSsl()) {
         // The runtime string is what Qt actually managed to load, so it is
         // empty in the case being reported — printed anyway, because the one
@@ -132,6 +140,7 @@ int main(int argc, char *argv[])
                          ? "nothing"
                          : qPrintable(QSslSocket::sslLibraryVersionString()));
     }
+#endif
 
     // One connection for both models, so a card added to a list is visible to
     // every query immediately rather than after a commit lands on disk.
