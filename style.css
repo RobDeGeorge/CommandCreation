@@ -1,0 +1,250 @@
+/* The landing page.
+ *
+ * Deliberately not the app: this is plain HTML and one stylesheet, a few tens
+ * of kilobytes, because the builder behind it is a 17 MB download and a page
+ * that costs that much to open cannot be the first thing anybody meets. It is
+ * also what a shared link previews as, and what a search engine can read.
+ *
+ * The palette is the app's own — PICO-8's sixteen, from qml/Retro.js — so the
+ * page and the thing it opens look like one product. No gradients, no blur, no
+ * rounded corners: the app draws its chrome as sprites on a pixel grid, and
+ * soft edges out here would read as a different piece of software.
+ */
+
+@font-face {
+    font-family: "Press Start 2P";
+    src: url("assets/PressStart2P-Regular.ttf") format("truetype");
+    font-display: swap;   /* the page must be readable before 116 KB of font lands */
+}
+
+:root {
+    --black: #000000;
+    --darkblue: #1d2b53;
+    --darkpurple: #7e2553;
+    --darkgrey: #5f574f;
+    --lightgrey: #c2c3c7;
+    --white: #fff1e8;
+    --orange: #ffa300;
+    --yellow: #ffec27;
+    --blue: #29adff;
+    --lavender: #83769c;
+
+    --plate: var(--darkblue);
+    --ink: var(--white);
+    --ink-dim: var(--lavender);
+    --hot: var(--yellow);
+
+    /* Press Start 2P is monospaced at one em per glyph and runs about a third
+     * wider than a normal face, so it is used for headings and controls only.
+     * Body copy is the reader's own UI font, which is what makes paragraphs
+     * this long survivable. */
+    --pixel: "Press Start 2P", ui-monospace, monospace;
+    --prose: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+    margin: 0;
+    background: var(--black);
+    color: var(--ink);
+    font-family: var(--prose);
+    font-size: 17px;
+    line-height: 1.65;
+    /* The app is drawn on a pixel grid; keep the page's images on one too. */
+    image-rendering: pixelated;
+}
+
+img { image-rendering: auto; }   /* except the photographic screenshot */
+
+a { color: var(--blue); }
+a:hover { color: var(--hot); }
+
+/* ---- top bar ---------------------------------------------------------- */
+
+.bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.5rem;
+    border-bottom: 3px solid var(--darkblue);
+    flex-wrap: wrap;
+}
+
+.wordmark {
+    font-family: var(--pixel);
+    font-size: 0.85rem;
+    color: var(--hot);
+}
+
+.bar nav a {
+    font-family: var(--pixel);
+    font-size: 0.6rem;
+    text-decoration: none;
+}
+
+/* ---- layout ----------------------------------------------------------- */
+
+main {
+    max-width: 68rem;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+}
+
+section { margin: 4.5rem 0; }
+
+/* The last section already carries a section margin; without this the page
+ * ends on a screenful of nothing above the footer rule. */
+main > section:last-child { margin-bottom: 3rem; }
+
+/* ---- hero ------------------------------------------------------------- */
+
+.hero { text-align: center; margin-top: 4rem; }
+
+.hero h1 {
+    font-family: var(--pixel);
+    /* clamp so the widest line still fits a narrow phone without a scrollbar */
+    font-size: clamp(1.05rem, 4.2vw, 2.1rem);
+    line-height: 1.7;
+    margin: 0 0 1.75rem;
+}
+
+.hot { color: var(--hot); }
+
+.lede {
+    max-width: 40rem;
+    margin: 0 auto 2.5rem;
+    color: var(--lightgrey);
+    font-size: 1.1rem;
+}
+
+/* The one button on the page. Bevelled with hard shadows rather than a
+ * gradient, the way the sprites in the app are drawn: lit top-left edge, black
+ * bottom-right, and the whole thing steps down into the shadow when pressed. */
+.cta {
+    display: inline-block;
+    font-family: var(--pixel);
+    font-size: clamp(0.75rem, 2.4vw, 1rem);
+    text-decoration: none;
+    color: var(--black);
+    background: var(--hot);
+    padding: 1.15rem 2rem;
+    border: 3px solid var(--black);
+    box-shadow: inset 2px 2px 0 var(--white), 6px 6px 0 var(--darkblue);
+}
+
+.cta:hover { background: var(--orange); color: var(--black); }
+
+.cta:active {
+    transform: translate(4px, 4px);
+    box-shadow: inset 2px 2px 0 var(--white), 2px 2px 0 var(--darkblue);
+}
+
+.cta:focus-visible { outline: 3px solid var(--blue); outline-offset: 4px; }
+
+/* The download line under the button. Deliberately not a second .cta: two
+ * buttons of equal weight is two decisions, and the browser build is the one
+ * that should be taken without thinking. */
+.downloads {
+    margin: 1.25rem auto 0;
+    font-size: 0.95rem;
+    color: var(--ink-dim);
+}
+
+.downloads a {
+    color: var(--hot);
+    text-underline-offset: 3px;
+}
+
+.fineprint {
+    margin: 1.5rem auto 0;
+    max-width: 34rem;
+    color: var(--ink-dim);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+/* ---- screenshot ------------------------------------------------------- */
+
+.shot img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 3px solid var(--darkblue);
+}
+
+/* ---- feature grid ----------------------------------------------------- */
+
+/* Two by two, not auto-fit. There are exactly four of these, and at this page
+ * width auto-fit lays them out three-then-one, which reads as a missing fifth
+ * card rather than as a deliberate row. */
+.grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.25rem;
+}
+
+.grid article {
+    background: var(--plate);
+    border: 3px solid var(--black);
+    box-shadow: inset 2px 2px 0 #2c3f70;   /* the lit edge, one step up from plate */
+    padding: 1.5rem;
+}
+
+.grid h2,
+.note h2 {
+    font-family: var(--pixel);
+    font-size: 0.8rem;
+    line-height: 1.6;
+    color: var(--hot);
+    margin: 0 0 1rem;
+}
+
+.grid p { margin: 0; color: var(--lightgrey); font-size: 0.98rem; }
+
+/* ---- the honest note about storage ------------------------------------ */
+
+.note {
+    border-left: 6px solid var(--orange);
+    background: #12081a;
+    padding: 1.5rem 1.75rem;
+}
+
+.note p { margin: 0; color: var(--lightgrey); }
+.note strong { color: var(--ink); }
+
+/* ---- footer ----------------------------------------------------------- */
+
+footer {
+    border-top: 3px solid var(--darkblue);
+    padding: 2rem 1.5rem 3rem;
+    text-align: center;
+    color: var(--ink-dim);
+    font-size: 0.85rem;
+}
+
+footer p { max-width: 46rem; margin: 0 auto 0.75rem; }
+
+/* Required attribution, and it should read as a notice rather than as copy. */
+.legal { font-size: 0.75rem; line-height: 1.6; color: var(--darkgrey); }
+
+/* ---- narrow screens --------------------------------------------------- */
+
+@media (max-width: 48rem) {
+    .grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 40rem) {
+    body { font-size: 16px; }
+    section { margin: 3rem 0; }
+    .hero { margin-top: 2.5rem; }
+    .cta { padding: 1rem 1.25rem; }
+}
+
+/* Someone who has asked for less motion should not get a button that jumps. */
+@media (prefers-reduced-motion: reduce) {
+    .cta:active { transform: none; }
+}
